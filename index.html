@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>75 Hard</title>
+  <meta name="description" content="Sue v Carlos. 75 days, same rules.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <script>
+    // Theme before first paint (avoids a flash), plus the iOS status bar style.
+    (function () {
+      var t = 'dark';
+      try { t = localStorage.getItem('theme75') || 'dark'; } catch (e) {}
+      var resolved = t === 'system'
+        ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : t;
+      document.documentElement.setAttribute('data-theme', resolved);
+      document.write('<meta name="apple-mobile-web-app-status-bar-style" content="' +
+        (resolved === 'light' ? 'default' : 'black-translucent') + '">');
+      document.write('<meta name="theme-color" content="' + (resolved === 'light' ? '#F4F2EF' : '#0A0A0A') + '">');
+    })();
+  </script>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="75 Hard">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preload" href="fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/app.css?v=1">
+</head>
+<body>
+  <div id="app" aria-live="polite">
+    <div class="boot">
+      <div class="boot-mark" aria-hidden="true"><span class="s">S</span><span class="v">v</span><span class="c">C</span></div>
+    </div>
+  </div>
+  <div id="toast-root"></div>
+  <div id="sheet-root"></div>
+  <label id="haptic" aria-hidden="true"><input type="checkbox" switch tabindex="-1"></label>
+  <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+  <noscript>This app needs JavaScript.</noscript>
+  <script type="module" src="js/app.js?v=1"></script>
+</body>
+</html>
