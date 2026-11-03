@@ -2,7 +2,7 @@
 // matched to a person; all reads/writes use the service role. The browser never
 // talks to tables or storage directly.
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
-import { diffDays, isComplete, isISODate, isOneWorkout, todayIn, type Entry } from "../_shared/rules.ts";
+import { diffDays, isISODate, isOneWorkout, todayIn, type Entry } from "../_shared/rules.ts";
 import { claimLog, getVapid, pushToPerson } from "../_shared/notify.ts";
 
 const BUCKET = "progress-photos";
@@ -110,33 +110,17 @@ async function assertEditableDay(me: Person, day: unknown): Promise<string> {
   return day;
 }
 
-async function getEntry(personId: string, day: string): Promise<Entry | null> {
-  const { data } = await db.from("entries").select("day,w1,w2,diet,water,read,photo")
-    .eq("person_id", personId).eq("day", day).maybeSingle();
-  return data as Entry | null;
-}
-
-/** Write fields to a day and fire the partner notification if the day just closed. */
+/**
+ * Write only the sent fields to a day (atomically, in the save_entry RPC, so overlapping saves
+ * can't overwrite each other) and fire the partner notification if the day just closed.
+ */
 async function writeEntry(me: Person, day: string, patch: Partial<Entry>) {
-  const before = await getEntry(me.id, day);
-  const row = {
-    person_id: me.id,
-    day,
-    w1: false,
-    w2: false,
-    diet: false,
-    water: 0,
-    read: false,
-    photo: false,
-    ...(before ?? {}),
-    ...patch,
-    updated_at: new Date().toISOString(),
-  };
-  const { error } = await db.from("entries").upsert(row, { onConflict: "person_id,day" });
-  if (error) throw new HttpError(500, "write_failed");
+  const { data, error } = await db.rpc("save_entry", { p_person_id: me.id, p_day: day, p_patch: patch });
+  if (error || !data) throw new HttpError(500, "write_failed");
+  const res = data as { was_complete: boolean; is_complete: boolean; entry: Entry };
 
-  if (!isComplete(before) && isComplete(row) && day === todayIn(me.tz)) {
-    const job = notifyPartner(me, row as Entry);
+  if (!res.was_complete && res.is_complete && day === todayIn(me.tz)) {
+    const job = notifyPartner(me, res.entry);
     // deno-lint-ignore no-explicit-any
     const rt = (globalThis as any).EdgeRuntime;
     if (rt?.waitUntil) rt.waitUntil(job);
@@ -184,20 +168,24 @@ async function uploadPhoto(me: Person, dayIn: unknown, data: unknown) {
   if (bytes.length > MAX_PHOTO_BYTES) throw new HttpError(413, "too_big");
   if (!(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)) throw new HttpError(415, "not_jpeg");
 
-  // One photo per day: replace any existing one for real.
-  const { data: old } = await db.from("photos").select("id,path").eq("person_id", me.id).eq("day", day)
-    .maybeSingle();
+  // One photo per day. Upload the new file, swap the database record, and only then delete the
+  // old file. If anything fails before the swap commits, the old photo and record stay intact.
   const path = `${me.id}/${day}/${crypto.randomUUID()}.jpg`;
   const up = await db.storage.from(BUCKET).upload(path, bytes, { contentType: "image/jpeg", upsert: false });
   if (up.error) throw new HttpError(500, "upload_failed");
-  if (old) {
-    await db.storage.from(BUCKET).remove([old.path]);
-    await db.from("photos").delete().eq("id", old.id);
-  }
-  const { error } = await db.from("photos").insert({ person_id: me.id, day, path, bytes: bytes.length });
+  const { data: oldPath, error } = await db.rpc("replace_photo", {
+    p_person_id: me.id,
+    p_day: day,
+    p_path: path,
+    p_bytes: bytes.length,
+  });
   if (error) {
-    await db.storage.from(BUCKET).remove([path]);
+    await db.storage.from(BUCKET).remove([path]); // only the new, unreferenced file
     throw new HttpError(500, "upload_failed");
+  }
+  if (typeof oldPath === "string" && oldPath !== path) {
+    const rm = await db.storage.from(BUCKET).remove([oldPath]);
+    if (rm.error) console.error("old photo cleanup failed", oldPath, rm.error.message);
   }
   await writeEntry(me, day, { photo: true });
   return state(me);

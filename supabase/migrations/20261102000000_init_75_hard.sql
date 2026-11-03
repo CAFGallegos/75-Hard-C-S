@@ -28,7 +28,23 @@ create table public.photos (
   day date not null, path text not null unique, bytes int, created_at timestamptz not null default now(), unique (person_id, day)
 );
 -- RLS on, no policies, no grants for browser roles: only the service role (edge functions) can read/write.
--- (enable row level security + revoke all from anon, authenticated on every table above)
+alter table public.people enable row level security;
+alter table public.app_settings enable row level security;
+alter table public.app_secrets enable row level security;
+alter table public.entries enable row level security;
+alter table public.push_subscriptions enable row level security;
+alter table public.push_log enable row level security;
+alter table public.photos enable row level security;
+
+revoke all on table public.people from anon, authenticated;
+revoke all on table public.app_settings from anon, authenticated;
+revoke all on table public.app_secrets from anon, authenticated;
+revoke all on table public.entries from anon, authenticated;
+revoke all on table public.push_subscriptions from anon, authenticated;
+revoke all on table public.push_log from anon, authenticated;
+revoke all on table public.photos from anon, authenticated;
+revoke all on sequence public.push_subscriptions_id_seq from anon, authenticated;
+
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('progress-photos', 'progress-photos', false, 5242880, array['image/jpeg']);
 -- cron: '75hard-notify' every 5 min -> net.http_post(.../functions/v1/notify, x-cron-secret from app_secrets)
