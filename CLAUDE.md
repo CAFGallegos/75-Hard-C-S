@@ -17,6 +17,9 @@ smallest safe change, inspect before editing).
 - RLS is on for every table with no policies; `anon`/`authenticated` have no grants. Only the service role
   (the edge functions) touches data. New functions must `revoke all ... from public, anon, authenticated`.
 - Entry saves go through the `save_entry` RPC and photo swaps through `replace_photo`, so they stay atomic.
+- `api` and `notify` bundle copies of `js/rules.js`, `js/daily.js`, `js/daily-lines.js` in `_shared/app/`.
+  After editing those, run `tools/sync-shared.sh` and redeploy both functions (`tests/shared-sync.test.mjs` checks).
+- Nudges go through the `send_nudge` RPC (3 per day, atomic). Nudges and old note plans are deleted nightly.
 - Person rows hold key hashes; `app_secrets` holds VAPID keys. Never print or commit either.
 - Any throwaway test data must be deleted when done (`people` is shown to both users).
 

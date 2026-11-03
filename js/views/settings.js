@@ -6,6 +6,7 @@ import { MODES, changeMode, shortcutGuide } from "../photo.js";
 import { pushState, enablePush, disablePush } from "../push.js";
 import { REMINDERS, TOTAL } from "../rules.js";
 import { applyTheme, getTheme } from "../theme.js";
+import { openWidgetSetup } from "../widget-setup.js";
 
 export function renderSettings(root) {
   const me = store.data.me;
@@ -57,6 +58,14 @@ export function renderSettings(root) {
             <button class="toggle" role="switch" aria-checked="${v.on}" aria-label="${esc(r.label)} reminder" data-rem-on></button>
           </div>`;
         }).join("")}
+        <div class="row">
+          <span class="txt"><span class="t" style="display:block">Nudges</span><span class="d" style="display:block">Let ${esc(partner)} nudge you</span></span>
+          <button class="toggle" role="switch" aria-checked="${rem.nudges?.on !== false}" aria-label="Nudges" data-nudges-on></button>
+        </div>
+        <div class="row" data-note-row>
+          <span class="txt"><span class="t" style="display:block">Daily note</span><span class="d" style="display:block">Today's line, at a random time most days</span></span>
+          <button class="toggle" role="switch" aria-checked="${rem.note?.on !== false}" aria-label="Daily note" data-note-on></button>
+        </div>
       </div>
       <p class="small" style="margin:10px 4px 0;color:var(--t3)">${esc(city)} time. These are yours only; ${esc(partner)} sets ${me.id === "sue" ? "his" : "her"} own.</p>
     </section>
@@ -107,6 +116,7 @@ export function renderSettings(root) {
       <span class="eyebrow">This device</span>
       <div class="group">
         ${!isStandalone() ? `<div class="row"><span class="row-ico">${icon("share")}</span><span class="txt"><span class="t" style="display:block">Add to Home Screen</span><span class="d" style="display:block">${isIOS() ? "In Safari: Share, then Add to Home Screen. Open it from there." : "Use your browser menu to install it."}</span></span></div>` : ""}
+        <button class="row" data-widget><span class="row-ico">${icon("photos")}</span><span class="txt"><span class="t" style="display:block">Add home screen widget</span><span class="d" style="display:block">Day, progress and today's line</span></span><span class="end">${icon("chevR")}</span></button>
         <button class="row" data-copy><span class="row-ico">${icon("link")}</span><span class="txt"><span class="t" style="display:block">Copy my private link</span><span class="d" style="display:block">It's your key. Don't share it.</span></span><span class="end">${icon("chevR")}</span></button>
         <button class="row" data-replay><span class="row-ico">${icon("refresh")}</span><span class="txt"><span class="t" style="display:block">Replay the welcome</span></span><span class="end">${icon("chevR")}</span></button>
       </div>
@@ -115,7 +125,7 @@ export function renderSettings(root) {
   </div>`;
 
   root.addEventListener("click", async (ev) => {
-    const t = ev.target.closest("[data-mode],[data-guide],[data-push-on],[data-push-off],[data-push-test],[data-theme-set],[data-copy],[data-replay],[data-penalty],[data-rem-on]");
+    const t = ev.target.closest("[data-mode],[data-guide],[data-push-on],[data-push-off],[data-push-test],[data-theme-set],[data-copy],[data-replay],[data-penalty],[data-rem-on],[data-note-on],[data-nudges-on],[data-widget]");
     if (!t) return;
     if (t.dataset.penalty) {
       const v = Number(t.dataset.penalty);
@@ -130,6 +140,19 @@ export function renderSettings(root) {
         store.emit("rerender");
       }
       return;
+    }
+    if (t.hasAttribute("data-widget")) { haptic(); return openWidgetSetup(); }
+    if (t.hasAttribute("data-nudges-on")) {
+      haptic();
+      const on = t.getAttribute("aria-checked") !== "true";
+      t.setAttribute("aria-checked", String(on));
+      return saveReminder("nudges", { on });
+    }
+    if (t.hasAttribute("data-note-on")) {
+      haptic();
+      const on = t.getAttribute("aria-checked") !== "true";
+      t.setAttribute("aria-checked", String(on));
+      return saveReminder("note", { on });
     }
     if (t.hasAttribute("data-rem-on")) {
       haptic();

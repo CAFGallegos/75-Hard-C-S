@@ -9,10 +9,14 @@ import {
   isHHMM,
   isISODate,
   readReminders,
-  REMINDER_DEFAULTS,
+  REMINDER_KINDS,
   type ReminderKind,
   todayIn,
 } from "../_shared/rules.ts";
+// The app's own rules and daily-line code (copied by tools/sync-shared.sh), so the app,
+// the widget and the notifications all show the same numbers and the same line.
+import { doneCount, isComplete, personStats } from "../_shared/app/rules.js";
+import { dailyLine } from "../_shared/app/daily.js";
 import { claimLog, getVapid, pushToPerson } from "../_shared/notify.ts";
 import { voice } from "../_shared/voice.ts";
 
@@ -22,6 +26,8 @@ const MAX_PHOTO_BYTES = 4_500_000;
 const BOOL_FIELDS = ["w1", "w2", "diet", "read", "photo"] as const;
 const PHOTO_MODES = ["phone", "album", "cloud", "checkbox"];
 const DIET_MAX = 160;
+const NUDGE_MAX = 60;
+const NUDGES_PER_DAY = 3;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -87,14 +93,58 @@ async function startDate(): Promise<string> {
 async function state(me: Person) {
   const [{ data: people }, { data: entries }, conf, vapid, { count: devices }, { count: photoCount }] =
     await Promise.all([
-      db.from("people").select("id,name,tz,diet").order("id"),
+      db.from("people").select("id,name,tz,diet,reminders").order("id"),
       db.from("entries").select("person_id,day,w1,w2,diet,water,read,photo").order("day"),
       settings(),
       getVapid(db),
       db.from("push_subscriptions").select("id", { count: "exact", head: true }).eq("person_id", me.id),
       db.from("photos").select("id", { count: "exact", head: true }).eq("person_id", me.id),
     ]);
+  const byPerson = (id: string) =>
+    (entries ?? []).filter((e) => e.person_id === id).map(({ person_id: _p, ...e }) => e);
+  const penalty = conf.miss_penalty;
+  const summary: Record<string, unknown> = {};
+  for (const p of people ?? []) {
+    const today = todayIn(p.tz);
+    const mine = byPerson(p.id);
+    const st = personStats({ today, entries: mine }, conf.start_date, penalty);
+    const te = mine.find((e) => e.day === today);
+    summary[p.id] = {
+      started: st.started,
+      day: st.dayNumber,
+      done_today: doneCount(te),
+      complete_today: isComplete(te),
+      completed: st.completed,
+      target: st.target,
+      added: st.added,
+      finish: st.finish,
+      finished: st.finished,
+    };
+  }
+  const myToday = todayIn(me.tz);
+
+  // Nudges: how many I have left today, whether the other person takes them, and the last
+  // one I received today (my local day). Nothing older is ever returned.
+  const partner = (people ?? []).find((p) => p.id !== me.id);
+  const [{ count: sentToday }, { data: lastIn }] = await Promise.all([
+    db.from("nudges").select("id", { count: "exact", head: true }).eq("from_id", me.id).eq("day", myToday),
+    db.from("nudges").select("from_id,body,created_at").eq("to_id", me.id)
+      .gte("created_at", new Date(Date.now() - 36 * 3600_000).toISOString())
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const lastToday = lastIn && todayIn(me.tz, new Date(lastIn.created_at)) === myToday ? lastIn : null;
   return {
+    // Today's daily line for the caller: the one place the app, widget and push read it from.
+    daily_line: dailyLine(me.id, { entries: byPerson(me.id) }, conf.start_date, penalty, myToday) ?? null,
+    summary,
+    nudges: {
+      left: Math.max(0, NUDGES_PER_DAY - (sentToday ?? 0)),
+      per_day: NUDGES_PER_DAY,
+      partner_on: partner ? readReminders(partner.reminders).nudges.on : false,
+      last_received: lastToday
+        ? { from: lastToday.from_id, body: lastToday.body, at: lastToday.created_at }
+        : null,
+    },
     me: {
       id: me.id,
       name: me.name,
@@ -117,7 +167,7 @@ async function state(me: Person) {
       diet: p.diet ?? "",
       today: todayIn(p.tz),
       // Partner sees only booleans; photos never leave the owner.
-      entries: (entries ?? []).filter((e) => e.person_id === p.id).map(({ person_id: _p, ...e }) => e),
+      entries: byPerson(p.id),
     })),
   };
 }
@@ -307,7 +357,12 @@ async function handle(req: Request): Promise<Response> {
       // Only ever touches the caller's own row.
       const cur = readReminders(me.reminders);
       const inc = (body.reminders ?? {}) as Record<string, { at?: unknown; on?: unknown }>;
-      for (const k of Object.keys(REMINDER_DEFAULTS) as ReminderKind[]) {
+      for (const flag of ["note", "nudges"] as const) {
+        if (inc[flag]?.on === undefined) continue;
+        if (typeof inc[flag].on !== "boolean") throw new HttpError(400, "bad_toggle");
+        cur[flag].on = inc[flag].on as boolean;
+      }
+      for (const k of REMINDER_KINDS) {
         const v = inc[k];
         if (!v) continue;
         if (v.at !== undefined) {
@@ -328,6 +383,27 @@ async function handle(req: Request): Promise<Response> {
       const diet = body.diet.replace(/\s+/g, " ").trim().slice(0, DIET_MAX);
       await db.from("people").update({ diet }).eq("id", me.id);
       return json(await state({ ...me, diet }));
+    }
+
+    case "nudge": {
+      // A small push to the other person. 3 per day, max 60 characters, not a chat.
+      if (typeof body.text !== "string") throw new HttpError(400, "bad_text");
+      const text = body.text.replace(/\s+/g, " ").trim();
+      if (!text || [...text].length > NUDGE_MAX) throw new HttpError(400, "bad_text");
+      const { data: other } = await db.from("people").select("id,reminders").neq("id", me.id).single();
+      if (!other) throw new HttpError(400, "no_partner");
+      if (!readReminders(other.reminders).nudges.on) throw new HttpError(409, "nudges_off");
+      const { data: n, error } = await db.rpc("send_nudge", {
+        p_from: me.id,
+        p_to: other.id,
+        p_day: todayIn(me.tz),
+        p_body: text,
+        p_limit: NUDGES_PER_DAY,
+      });
+      if (error) throw new HttpError(500, "nudge_failed");
+      if (n === -1) throw new HttpError(429, "nudge_limit");
+      const res = await pushToPerson(db, other.id, { title: `S v C · ${me.name}`, body: text, tag: `nudge-${Date.now()}` });
+      return json({ ok: true, left: Math.max(0, NUDGES_PER_DAY - (n as number)), delivered: res.sent > 0 });
     }
 
     case "photo_pending": {
@@ -384,7 +460,7 @@ async function handle(req: Request): Promise<Response> {
 
     case "push_test": {
       const rem = readReminders(me.reminders);
-      const on = (Object.keys(rem) as ReminderKind[]).filter((k) => rem[k].on).map((k) => fmtTime(rem[k].at));
+      const on = REMINDER_KINDS.filter((k) => rem[k].on).map((k) => fmtTime(rem[k].at));
       const r = await pushToPerson(db, me.id, {
         title: "You're all set",
         body: on.length

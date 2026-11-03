@@ -91,8 +91,14 @@ export function progress(entries: Entry[], start: string, today: string, penalty
 }
 
 export type ReminderKind = "w1" | "w2" | "evening";
-export type Reminders = Record<ReminderKind, { at: string; on: boolean }>;
+export type Reminders = Record<ReminderKind, { at: string; on: boolean }> & {
+  note: { on: boolean };
+  nudges: { on: boolean };
+};
+export const REMINDER_KINDS: ReminderKind[] = ["w1", "w2", "evening"];
 export const REMINDER_DEFAULTS: Reminders = {
+  note: { on: true }, // the daily-note push (today's line, random time, most days)
+  nudges: { on: true }, // receive nudges from the other person
   w1: { at: "06:45", on: true },
   w2: { at: "15:30", on: true },
   evening: { at: "20:30", on: true },
@@ -103,8 +109,9 @@ export const isHHMM = (s: unknown): s is string => typeof s === "string" && /^([
 /** Saved reminders with defaults filled in for anything missing or malformed. */
 export function readReminders(raw: unknown): Reminders {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, { at?: unknown; on?: unknown }>;
-  const out = {} as Reminders;
-  for (const k of Object.keys(REMINDER_DEFAULTS) as ReminderKind[]) {
+  const flag = (v: unknown) => (typeof v === "boolean" ? v : true);
+  const out = { note: { on: flag(r.note?.on) }, nudges: { on: flag(r.nudges?.on) } } as Reminders;
+  for (const k of REMINDER_KINDS) {
     const v = r[k] ?? {};
     out[k] = {
       at: isHHMM(v.at) ? v.at : REMINDER_DEFAULTS[k].at,

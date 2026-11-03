@@ -20,6 +20,8 @@ A private two-person 75 Hard tracker. Installable PWA on GitHub Pages, backed by
   - **2 days**: each miss adds 2 days, and you need 75 completed days plus one more per miss.
 - The finish line is computed in one place (`personStats` in `js/rules.js`, mirrored by `progress` in
   `supabase/functions/_shared/rules.ts`) and used everywhere it appears. `node tests/finish-line.test.mjs` checks it.
+- A daily line under the day header on Today, one per person per day. All lines live in `js/daily-lines.js`
+  (add more there). `node tests/daily-lines.test.mjs` replays the whole challenge to check the rules.
 - Each person sets their own diet (shown under Diet on Today, always with "No alcohol") and their own reminder
   times, each of which can be switched off. The sender reads each person's saved times in their own time zone.
 
@@ -37,3 +39,36 @@ supabase/functions/                       api + notify edge functions
 The key and VAPID private key are **not** in this repo.
 
 Regenerate the icons with `NODE_PATH=$(npm root -g) node tools/make-icons.mjs` (needs Playwright).
+
+## Daily note and nudges
+
+- **Daily note:** most days (about 3 in 4), today's daily line also arrives as a push titled "S v C", at a random
+  time between 6am and 11pm in your own time zone. It's never the same time two days in a row, never within
+  45 minutes of your other reminders, and never at the same moment as the other person's. Switch it off in
+  Settings › Reminders › Daily note. Rules live in `supabase/functions/_shared/note.ts`; check them with
+  `deno run tests/note-slots.test.ts`.
+- **Nudges:** the Nudge button on the other person's board card sends a small push ("S v C · Name"): a preset
+  or a short custom message (60 characters max), 3 per day. The last one you got shows on Today, for that day
+  only. Nothing is kept: nudges are deleted by the nightly cleanup. Turn receiving off in Settings › Reminders › Nudges.
+
+## Home screen widget (Scriptable)
+
+Shows your day, today's progress and today's line (small), or you vs the other person (medium). It reads the
+same `daily_line` and numbers the app gets from the api, refreshes about every 30 minutes, and shows the last
+saved data with a small "Updated" time when offline. Tapping it opens your app.
+
+The easiest way: **Settings › Add home screen widget** in the app has copy buttons for the script and your key.
+By hand:
+
+1. Install **Scriptable** from the App Store (free).
+2. Open Scriptable, tap **+**, name the script **75 Hard**, and paste in the contents of
+   [`widget/75hard-widget.js`](widget/75hard-widget.js). Tap **Done**.
+3. On your home screen, add a **Scriptable** widget (small or medium).
+4. Long-press it, tap **Edit Widget**, set **Script** to **75 Hard**, and paste your key into **Parameter**
+   (the long code after `?k=` in your private link). Same script for both of us; the key decides whose widget it is.
+
+## Editing the daily lines
+
+Edit `js/daily-lines.js`, then run `tools/sync-shared.sh` and redeploy the `api` and `notify` functions:
+the server uses the same file so the app, the widget and the daily note always agree.
+`node tests/shared-sync.test.mjs` fails if the copies drift.

@@ -1,6 +1,7 @@
 import { store } from "../store.js";
 import { TASKS, TOTAL, WATER_GOAL, OZ_PER_BOTTLE, REMINDERS, blank, taskDone, doneCount, isComplete, isOneWorkout, dayNum, diffDays, waterPace, dietMeta, fmtTime } from "../rules.js";
 import { milestoneNote } from "../voice.js";
+import { lastNudgeHtml } from "../nudges.js";
 import { icon, bottleSvg } from "../icons.js";
 import { $, $$, esc, fmtLong, fmtMD, fmtWd, fmtWdShort, fmtShort, pad2, haptic } from "../util.js";
 import { startPhoto, photoMeta } from "../photo.js";
@@ -129,6 +130,8 @@ export function renderToday(root) {
         <div class="ring-check">${icon("check", "", 2.6)}</div>
       </div>
     </section>
+    ${isToday ? `<p class="daily-line" data-daily hidden></p>` : ""}
+    ${isToday ? `<p class="nudge-line" data-nudge-in hidden></p>` : ""}
     ${isToday ? `<button class="partner-chip" data-go="board"></button>` : ""}
     <div class="strip-wrap"><div class="strip" data-strip role="tablist" aria-label="Days"></div></div>
     ${!isToday ? `<div class="past-banner"><div class="txt">Editing <b>${esc(fmtLong(sel))}</b>. Filling it in still counts.</div>
@@ -235,6 +238,21 @@ export function paint(root, selIn) {
   const noteEl = $("[data-note]", root);
   noteEl.hidden = !note;
   noteEl.textContent = note ?? "";
+
+  // Today's line, straight from the api (the widget and the push read the same field).
+  // Only on today, not past days.
+  const dailyEl = $("[data-daily]", root);
+  if (dailyEl) {
+    const line = store.data.daily_line ?? null;
+    dailyEl.hidden = !line;
+    dailyEl.textContent = line ?? "";
+  }
+  const nudgeEl = $("[data-nudge-in]", root);
+  if (nudgeEl) {
+    const html = lastNudgeHtml();
+    nudgeEl.hidden = !html;
+    nudgeEl.innerHTML = html ?? "";
+  }
 
   $("[data-ringn]", root).innerHTML = `${doneCount(e)}<small>/6</small>`;
   $("[data-ring]", root).classList.toggle("complete", complete);
