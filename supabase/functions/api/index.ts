@@ -2,14 +2,26 @@
 // matched to a person; all reads/writes use the service role. The browser never
 // talks to tables or storage directly.
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
-import { diffDays, isISODate, isOneWorkout, todayIn, type Entry } from "../_shared/rules.ts";
+import {
+  diffDays,
+  type Entry,
+  fmtTime,
+  isHHMM,
+  isISODate,
+  readReminders,
+  REMINDER_DEFAULTS,
+  type ReminderKind,
+  todayIn,
+} from "../_shared/rules.ts";
 import { claimLog, getVapid, pushToPerson } from "../_shared/notify.ts";
+import { voice } from "../_shared/voice.ts";
 
 const BUCKET = "progress-photos";
 const SIGNED_URL_TTL = 300; // seconds
 const MAX_PHOTO_BYTES = 4_500_000;
 const BOOL_FIELDS = ["w1", "w2", "diet", "read", "photo"] as const;
 const PHOTO_MODES = ["phone", "album", "cloud", "checkbox"];
+const DIET_MAX = 160;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +56,8 @@ interface Person {
   onboarded: boolean;
   tips: Record<string, unknown>;
   pending_photo_day: string | null;
+  reminders: unknown;
+  diet: string;
 }
 
 async function sha256Hex(s: string) {
@@ -54,24 +68,28 @@ async function sha256Hex(s: string) {
 async function personForKey(k: unknown): Promise<Person> {
   if (typeof k !== "string" || k.length < 32 || k.length > 128) throw new HttpError(401, "bad_key");
   const { data } = await db.from("people")
-    .select("id,name,tz,photo_mode,onboarded,tips,pending_photo_day")
+    .select("id,name,tz,photo_mode,onboarded,tips,pending_photo_day,reminders,diet")
     .eq("key_hash", await sha256Hex(k))
     .maybeSingle();
   if (!data) throw new HttpError(401, "bad_key");
   return data as Person;
 }
 
+async function settings(): Promise<{ start_date: string; miss_penalty: number }> {
+  const { data } = await db.from("app_settings").select("start_date,miss_penalty").eq("id", 1).single();
+  return { start_date: data!.start_date, miss_penalty: data!.miss_penalty ?? 1 };
+}
+
 async function startDate(): Promise<string> {
-  const { data } = await db.from("app_settings").select("start_date").eq("id", 1).single();
-  return data!.start_date;
+  return (await settings()).start_date;
 }
 
 async function state(me: Person) {
-  const [{ data: people }, { data: entries }, start, vapid, { count: devices }, { count: photoCount }] =
+  const [{ data: people }, { data: entries }, conf, vapid, { count: devices }, { count: photoCount }] =
     await Promise.all([
-      db.from("people").select("id,name,tz").order("id"),
+      db.from("people").select("id,name,tz,diet").order("id"),
       db.from("entries").select("person_id,day,w1,w2,diet,water,read,photo").order("day"),
-      startDate(),
+      settings(),
       getVapid(db),
       db.from("push_subscriptions").select("id", { count: "exact", head: true }).eq("person_id", me.id),
       db.from("photos").select("id", { count: "exact", head: true }).eq("person_id", me.id),
@@ -86,14 +104,17 @@ async function state(me: Person) {
       tips: me.tips ?? {},
       push_devices: devices ?? 0,
       photo_count: photoCount ?? 0,
+      reminders: readReminders(me.reminders),
     },
-    start_date: start,
+    start_date: conf.start_date,
+    miss_penalty: conf.miss_penalty,
     vapid_public: vapid.publicKey,
     server_time: new Date().toISOString(),
     people: (people ?? []).map((p) => ({
       id: p.id,
       name: p.name,
       tz: p.tz,
+      diet: p.diet ?? "",
       today: todayIn(p.tz),
       // Partner sees only booleans; photos never leave the owner.
       entries: (entries ?? []).filter((e) => e.person_id === p.id).map(({ person_id: _p, ...e }) => e),
@@ -136,10 +157,8 @@ async function notifyPartner(me: Person, e: Entry) {
     for (const o of others ?? []) {
       if (!(await claimLog(db, o.id, `partner_done:${me.id}`, e.day))) continue;
       await pushToPerson(db, o.id, {
-        title: `${me.name} closed out Day ${dayNum}`,
-        body: isOneWorkout(e)
-          ? `Day ${dayNum} is done, with 1 workout. Your move.`
-          : `All six done for Day ${dayNum}. Your move.`,
+        title: `${me.name} · Day ${dayNum} done`,
+        body: voice(o.id).partnerDone,
         tag: `partner-${me.id}-${e.day}`,
         person: me.id,
       });
@@ -277,6 +296,40 @@ async function handle(req: Request): Promise<Response> {
       return json(await state(me));
     }
 
+    case "penalty": {
+      const v = Number(body.value);
+      if (v !== 1 && v !== 2) throw new HttpError(400, "bad_penalty");
+      await db.from("app_settings").update({ miss_penalty: v, updated_at: new Date().toISOString() }).eq("id", 1);
+      return json(await state(me));
+    }
+
+    case "reminders": {
+      // Only ever touches the caller's own row.
+      const cur = readReminders(me.reminders);
+      const inc = (body.reminders ?? {}) as Record<string, { at?: unknown; on?: unknown }>;
+      for (const k of Object.keys(REMINDER_DEFAULTS) as ReminderKind[]) {
+        const v = inc[k];
+        if (!v) continue;
+        if (v.at !== undefined) {
+          if (!isHHMM(v.at)) throw new HttpError(400, "bad_time");
+          cur[k].at = v.at;
+        }
+        if (v.on !== undefined) {
+          if (typeof v.on !== "boolean") throw new HttpError(400, "bad_toggle");
+          cur[k].on = v.on;
+        }
+      }
+      await db.from("people").update({ reminders: cur }).eq("id", me.id);
+      return json(await state({ ...me, reminders: cur }));
+    }
+
+    case "diet": {
+      if (typeof body.diet !== "string") throw new HttpError(400, "bad_diet");
+      const diet = body.diet.replace(/\s+/g, " ").trim().slice(0, DIET_MAX);
+      await db.from("people").update({ diet }).eq("id", me.id);
+      return json(await state({ ...me, diet }));
+    }
+
     case "photo_pending": {
       const day = await assertEditableDay(me, body.day);
       await db.from("people").update({ pending_photo_day: day }).eq("id", me.id);
@@ -330,9 +383,13 @@ async function handle(req: Request): Promise<Response> {
     }
 
     case "push_test": {
+      const rem = readReminders(me.reminders);
+      const on = (Object.keys(rem) as ReminderKind[]).filter((k) => rem[k].on).map((k) => fmtTime(rem[k].at));
       const r = await pushToPerson(db, me.id, {
         title: "You're all set",
-        body: "Reminders land at 6:45am, 3:30pm and 8:30pm.",
+        body: on.length
+          ? `Reminders land at ${on.length > 1 ? on.slice(0, -1).join(", ") + " and " + on[on.length - 1] : on[0]}.`
+          : "All your reminders are off. Turn some on in Settings.",
         tag: "test",
       });
       return json(r);

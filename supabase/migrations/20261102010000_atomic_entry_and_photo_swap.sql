@@ -1,5 +1,4 @@
--- Atomic helpers for the api edge function. NOT yet applied to the live project:
--- apply this before deploying the matching supabase/functions/api change.
+-- Atomic helpers for the api edge function. Applied to the live project 2026-11-03.
 
 -- save_entry: apply only the fields in p_patch to one day's row, in one transaction.
 -- The row lock serializes overlapping saves, so two quick taps on different fields both stick.

@@ -180,6 +180,35 @@ async function boot() {
   syncPush();
 }
 
+// Easter egg: long-press the S v C mark.
+(() => {
+  let timer = null, startXY = null;
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  document.addEventListener("pointerdown", (e) => {
+    const mark = e.target.closest?.(".mark");
+    if (!mark) return;
+    startXY = [e.clientX, e.clientY];
+    timer = setTimeout(() => {
+      timer = null;
+      haptic("success");
+      document.querySelectorAll(".egg").forEach((x) => x.remove());
+      const r = mark.getBoundingClientRect();
+      const egg = document.createElement("div");
+      egg.className = "egg";
+      egg.textContent = "Te quiero enana";
+      egg.style.left = `${r.right + 10}px`;
+      egg.style.top = `${r.top + r.height / 2 - 14}px`;
+      document.body.appendChild(egg);
+      setTimeout(() => egg.remove(), 1700);
+    }, 550);
+  });
+  document.addEventListener("pointermove", (e) => {
+    if (timer && startXY && Math.hypot(e.clientX - startXY[0], e.clientY - startXY[1]) > 10) cancel();
+  });
+  ["pointerup", "pointercancel", "scroll"].forEach((ev) => document.addEventListener(ev, cancel, true));
+  document.addEventListener("contextmenu", (e) => { if (e.target.closest?.(".mark")) e.preventDefault(); });
+})();
+
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible" || !store.data) return;
   checkShortcutReturn();

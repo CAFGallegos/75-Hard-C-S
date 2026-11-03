@@ -1,5 +1,6 @@
 import { store } from "../store.js";
-import { TASKS, TOTAL, WATER_GOAL, OZ_PER_BOTTLE, blank, taskDone, doneCount, isComplete, isOneWorkout, dayNum, diffDays, waterPace, addDays } from "../rules.js";
+import { TASKS, TOTAL, WATER_GOAL, OZ_PER_BOTTLE, REMINDERS, blank, taskDone, doneCount, isComplete, isOneWorkout, dayNum, diffDays, waterPace, dietMeta, fmtTime } from "../rules.js";
+import { milestoneNote } from "../voice.js";
 import { icon, bottleSvg } from "../icons.js";
 import { $, $$, esc, fmtLong, fmtMD, fmtWd, fmtWdShort, fmtShort, pad2, haptic } from "../util.js";
 import { startPhoto, photoMeta } from "../photo.js";
@@ -39,12 +40,26 @@ function taskRow(t) {
   </button>`;
 }
 
+/** "6:45am workout, 3:30pm outdoor workout, 8:30pm check-in." from my saved reminders. */
+export function remindersLine(rem) {
+  const words = { w1: "workout", w2: "outdoor workout", evening: "check-in" };
+  const on = REMINDERS.filter((r) => rem?.[r.key]?.on !== false).map((r) => `${fmtTime(rem?.[r.key]?.at ?? r.at)} ${words[r.key]}`);
+  return on.length ? on.join(", ") + "." : "All your reminders are off. Turn them on in Settings.";
+}
+
+/** "Finish line is Sat, Jan 17" + "+3 days added" (same math everywhere: personStats). */
+export function finishLineHtml(s) {
+  return `Finish line is <b>${esc(fmtShort(s.finish))}</b>${s.added ? ` <span class="added">+${s.added} day${s.added > 1 ? "s" : ""} added</span>` : ""}`;
+}
+
+const restartLine = () => `No restarts. Miss a day and it adds ${store.penalty === 2 ? "two" : "one"} to the end.`;
+
 const metaHtml = (parts) => parts.map((p, i) => (i ? '<i class="sep"></i>' : "") + `<span>${esc(p)}</span>`).join("");
 
 function preStart(root) {
   const me = store.me;
   const days = diffDays(me.today, store.start);
-  const finish = addDays(store.start, TOTAL - 1);
+  const s = store.stats(me);
   const ps = pushState();
   root.innerHTML = `<div class="view">
     <div class="topbar"><span class="mark"><span class="s">S</span><span class="v">v</span><span class="c">C</span></span>
@@ -54,14 +69,15 @@ function preStart(root) {
       ${days === 1
         ? `<div class="h-display" style="margin-top:18px">Tomorrow</div>`
         : `<div style="display:flex;align-items:flex-end;margin-top:18px"><span class="num big">${days}</span><span class="num unit">days</span></div>`}
-      <p class="body" style="margin-top:14px">${esc(fmtLong(store.start))}. Finish line is ${esc(fmtShort(finish))} if nobody misses a day.</p>
+      <p class="body" style="margin-top:14px">${esc(fmtLong(store.start))}.</p>
+      <p class="finish-line" style="margin-top:6px">${finishLineHtml(s)}</p>
       <div class="bg-v" aria-hidden="true">75</div>
     </section>
     <section class="section">
-      <span class="eyebrow">Every day, both of you</span>
+      <span class="eyebrow">Every day, both of us</span>
       <div class="card card-pad preview-list" style="padding-top:6px;padding-bottom:6px">
         ${TASKS.map((t) => `<div class="preview-item"><div class="task-ico">${icon(t.icon)}</div>
-          <div><div class="h3" style="font-size:15.5px">${t.title}</div><div class="small">${t.meta.join(" · ")}</div></div></div>`).join("")}
+          <div><div class="h3" style="font-size:15.5px">${t.title}</div><div class="small">${esc((t.key === "diet" ? dietMeta(me.diet) : t.meta).join(" · "))}</div></div></div>`).join("")}
       </div>
     </section>
     ${ps.state !== "on" ? `<section class="section">
@@ -69,7 +85,7 @@ function preStart(root) {
         <div style="display:flex;gap:14px;align-items:flex-start">
           <div class="task-ico" style="background:color-mix(in srgb,var(--me) 16%,transparent);color:var(--me-ink)">${icon("bell")}</div>
           <div style="flex:1"><div class="h3">Get the nudges</div>
-          <p class="small" style="margin:4px 0 0">6:45am workout, 3:30pm outdoor workout, 8:30pm check-in.</p></div>
+          <p class="small" style="margin:4px 0 0">${esc(remindersLine(store.data.me.reminders))}</p></div>
         </div>
         <div style="margin-top:16px">${ps.state === "install"
           ? `<div class="tip" style="margin-top:0">${icon("share")}<span>Add this to your Home Screen first: <b>Share</b>, then <b>Add to Home Screen</b>. Open it from there.</span></div>`
@@ -77,7 +93,7 @@ function preStart(root) {
             ? `<div class="tip" style="margin-top:0">${icon("info")}<span>Notifications are blocked. Turn them on in <b>Settings › Notifications › 75 Hard</b>.</span></div>`
             : `<button class="btn btn-me btn-block" data-push>${icon("bell")}Turn on notifications</button>`}</div>
       </div></section>` : ""}
-    <p class="foot-note">No restarts. Miss a day and it adds one to the end.</p>
+    <p class="foot-note">${esc(restartLine())}</p>
   </div>`;
   $("[data-push]", root)?.addEventListener("click", async () => {
     haptic();
@@ -103,8 +119,10 @@ export function renderToday(root) {
     <section class="hero">
       <div class="hero-day">
         <div class="eyebrow" data-date>${esc(isToday ? "Today · " : "")}${esc(fmtShort(sel))}</div>
-        <div class="hero-num"><span class="num big">${pad2(dayNum(store.start, sel))}</span><span class="num of">/${TOTAL}</span></div>
+        <div class="hero-num"><span class="num big">${pad2(dayNum(store.start, sel))}</span><span class="num of" data-of>/${TOTAL}</span></div>
         <div class="hero-sub" data-heropills></div>
+        <p class="finish-line" data-finish></p>
+        <p class="note" data-note hidden></p>
       </div>
       <div class="ring" data-ring>${ringSvg()}
         <div class="ring-center"><div><div class="num n" data-ringn></div><div class="eyebrow l">Done</div></div></div>
@@ -199,6 +217,7 @@ export function paint(root, selIn) {
     let meta = t.meta;
     if (t.key === "water") meta = [`${e.water} of ${WATER_GOAL}`, `${e.water * OZ_PER_BOTTLE} of ${WATER_GOAL * OZ_PER_BOTTLE} oz`];
     if (t.key === "photo") meta = photoMeta(on);
+    if (t.key === "diet") meta = [dietMeta(me.diet).join(" · ")]; // one flowing line, wraps cleanly
     if ((t.key === "w1" || t.key === "w2") && complete && !(e.w1 && e.w2) && !on) meta = [...t.meta, "Skipped, still counts"];
     $("[data-meta]", el).innerHTML = metaHtml(meta);
     $(`[data-seg="${t.key}"]`, root).classList.toggle("on", on);
@@ -209,6 +228,13 @@ export function paint(root, selIn) {
     const want = isToday ? waterPace() : 0;
     pace.textContent = e.water >= WATER_GOAL ? "Gallon done" : isToday && e.water < want - 1 ? `Aim for ${want} by now` : "";
   }
+
+  $("[data-of]", root).textContent = `/${TOTAL + s.added}`;
+  $("[data-finish]", root).innerHTML = finishLineHtml(s);
+  const note = milestoneNote(me.id, s, sel);
+  const noteEl = $("[data-note]", root);
+  noteEl.hidden = !note;
+  noteEl.textContent = note ?? "";
 
   $("[data-ringn]", root).innerHTML = `${doneCount(e)}<small>/6</small>`;
   $("[data-ring]", root).classList.toggle("complete", complete);
@@ -252,11 +278,11 @@ export function paint(root, selIn) {
   // stats
   $("[data-stats]", root).innerHTML = `
     <div class="stat"><div class="eyebrow">Completed</div>
-      <div class="num v">${s.completed}<small>/${TOTAL}</small></div>
-      <div class="sub">${s.finished ? "75 done" : `${s.left} to go`}</div></div>
+      <div class="num v">${s.completed}<small>/${s.target}</small></div>
+      <div class="sub">${s.finished ? "All done" : `${s.left} to go`}</div></div>
     <div class="stat"><div class="eyebrow">Days added</div>
       <div class="num v">${s.added ? "+" + s.added : "0"}</div>
-      <div class="sub">${s.added ? "No restarts" : "Clean so far"}</div></div>
+      <div class="sub">${s.added ? `${s.missed} missed × ${s.penalty}` : "Clean so far"}</div></div>
     <div class="stat"><div class="eyebrow">1-workout days</div>
       <div class="num v">${s.oneWorkout}</div>
       <div class="sub">Still count</div></div>

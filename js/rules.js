@@ -31,14 +31,18 @@ export const diffDays = (a, b) => Math.round((Date.parse(b + "T12:00:00Z") - Dat
 export const dayNum = (start, day) => diffDays(start, day) + 1;
 
 /**
- * Everything the UI needs for one person.
- * No restarts: each unfinished past day adds one day to the end.
+ * Everything the UI needs for one person. The single finish-line calculation:
+ * Today, Board and Settings all read it from here.
+ * No restarts: each unfinished past day adds `penalty` days (1 or 2) to the end.
+ * Completed days needed = 75 + missed × (penalty − 1).
+ * Mirrors progress() in supabase/functions/_shared/rules.ts; keep them identical.
  */
-export function personStats(p, start) {
+export function personStats(p, start, penalty = 1) {
   const today = p.today;
   const map = new Map(p.entries.map((e) => [e.day, e]));
-  const days = []; // calendar days from start through today (or until 75 done)
-  let completed = 0, oneWorkout = 0, added = 0, finishedOn = null;
+  const days = []; // calendar days from start through today (or until finished)
+  let completed = 0, oneWorkout = 0, missed = 0, finishedOn = null;
+  const milestones = {}; // 25 / 50 -> the day that completion landed on
 
   if (today >= start) {
     for (let d = start; d <= today; d = addDays(d, 1)) {
@@ -49,9 +53,10 @@ export function personStats(p, start) {
         completed++;
         if (isOneWorkout(e)) oneWorkout++;
         status = isOneWorkout(e) ? "one" : "done";
-        if (completed === TOTAL) finishedOn = d;
+        if (completed === 25 || completed === 50) milestones[completed] = d;
+        if (completed >= TOTAL + missed * (penalty - 1)) finishedOn = d;
       } else if (d < today) {
-        added++;
+        missed++;
         status = "missed";
       } else status = "today";
       days.push({ day: d, status, entry: e });
@@ -68,12 +73,17 @@ export function personStats(p, start) {
     else break;
   }
 
+  const added = missed * penalty;
+  const target = TOTAL + missed * (penalty - 1);
   const finish = finishedOn ?? addDays(start, TOTAL - 1 + added);
+  const last = days[days.length - 1];
+  const prev = last?.status === "today" ? days[days.length - 2] : last;
   return {
-    today, started: today >= start, completed, oneWorkout, added, streak, finish,
-    finished: !!finishedOn, days, map,
+    today, started: today >= start, completed, oneWorkout, missed, added, target, streak, finish,
+    finished: !!finishedOn, finishedOn, days, map, milestones, penalty,
+    lastClosedMissed: prev?.status === "missed", // most recent finished day was a miss
     dayNumber: today >= start ? dayNum(start, today) : 0,
-    left: TOTAL - completed,
+    left: Math.max(0, target - completed),
   };
 }
 
@@ -82,4 +92,23 @@ export function waterPace(now = new Date()) {
   const m = now.getHours() * 60 + now.getMinutes();
   const t = (m - 7 * 60) / (14 * 60);
   return Math.max(0, Math.min(WATER_GOAL, Math.floor(t * WATER_GOAL)));
+}
+
+export const REMINDERS = [
+  { key: "w1", label: "Workout 1", at: "06:45" },
+  { key: "w2", label: "Outdoor workout", at: "15:30" },
+  { key: "evening", label: "Evening check-in", at: "20:30" },
+];
+
+/** "06:45" -> "6:45am" */
+export function fmtTime(s) {
+  const h = Number(s.slice(0, 2)), m = s.slice(3, 5);
+  return `${h % 12 || 12}:${m}${h < 12 ? "am" : "pm"}`;
+}
+
+/** Diet subtitle: the person's own rule, always with "No alcohol". */
+export function dietMeta(rule) {
+  const r = (rule ?? "").trim();
+  if (!r) return ["No cheat meals", "No alcohol"];
+  return /\bno alcohol\b/i.test(r) ? [r] : [r, "No alcohol"];
 }
