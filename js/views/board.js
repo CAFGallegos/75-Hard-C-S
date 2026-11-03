@@ -3,6 +3,7 @@ import { TASKS, TOTAL, WATER_GOAL, taskDone, doneCount, isComplete, isOneWorkout
 import { icon } from "../icons.js";
 import { esc, fmtShort, fmtMD } from "../util.js";
 import { voice, boardNote } from "../voice.js";
+import { openNudgeSheet } from "../nudges.js";
 
 const ORDER = ["sue", "los"]; // S v C
 
@@ -29,6 +30,14 @@ function grid(p, s) {
   return cells.join("");
 }
 
+function nudgeButton() {
+  const nz = store.data.nudges;
+  if (!nz) return "";
+  if (!nz.partner_on) return `<div class="nudge-row"><span class="small muted">Nudges are off for ${esc(store.partner.name)}</span></div>`;
+  return `<div class="nudge-row"><button class="btn btn-sm btn-line" data-nudge ${nz.left ? "" : "disabled"}>${icon("bell")}${nz.left ? "Nudge" : "No nudges left today"}</button>
+    <span class="small muted" data-nudge-left>${nz.left ? `${nz.left} left today` : ""}</span></div>`;
+}
+
 function card(p) {
   const s = store.stats(p);
   const st = todayStatus(p, s);
@@ -42,6 +51,7 @@ function card(p) {
       <span class="pill ${st.cls}" style="${st.me ? `background:color-mix(in srgb,var(--${p.id}) 16%,transparent);color:var(--${p.id}-ink)` : ""}">${esc(st.label)}</span>
     </div>
     ${!isMe && p.diet ? `<p class="diet-rule"><span>Diet ·</span> ${esc(p.diet)}</p>` : ""}
+    ${!isMe ? nudgeButton() : ""}
     <div class="today-icons" aria-label="Today">
       ${TASKS.map((t) => {
         if (t.key === "water") {
@@ -97,6 +107,20 @@ export function renderBoard(root) {
     </section>
     <p class="foot-note">Partners see check marks only. Never photos.</p>
   </div>`;
+  root.querySelector("[data-nudge]")?.addEventListener("click", (ev) => {
+    const btn = ev.currentTarget;
+    openNudgeSheet({
+      onSent: (left) => {
+        btn.innerHTML = `${icon("check", "", 2.4)}Sent`;
+        const l = root.querySelector("[data-nudge-left]");
+        if (l) l.textContent = left ? `${left} left today` : "";
+        setTimeout(() => {
+          btn.disabled = !left;
+          btn.innerHTML = `${icon("bell")}${left ? "Nudge" : "No nudges left today"}`;
+        }, 2200);
+      },
+    });
+  });
 }
 
 export { dayNum };

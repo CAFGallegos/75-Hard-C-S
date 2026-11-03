@@ -62,6 +62,8 @@ export const errorText = (e) => {
     case "before_start": return "That's before the start date.";
     case "too_big": return "That photo is too large.";
     case "bad_key": return "This link isn't valid anymore.";
+    case "nudge_limit": return "That's 3 for today. More tomorrow.";
+    case "nudges_off": return "They have nudges turned off.";
     default: return "Something went wrong. Try again.";
   }
 };
