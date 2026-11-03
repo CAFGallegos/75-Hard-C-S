@@ -5,6 +5,7 @@ import { errorText } from "../api.js";
 import { MODES, shortcutGuide } from "../photo.js";
 import { pushState, enablePush } from "../push.js";
 import { TASKS } from "../rules.js";
+import { remindersLine } from "./today.js";
 
 // Sue's welcome is Carlos talking to her. Copy as written.
 const SUE_MODES = {
@@ -45,7 +46,7 @@ function screensFor(id) {
         <p class="small" style="margin-top:14px;text-align:center">You can change this later in settings.</p>`,
       () => `<h1 class="w-title">Last thing.</h1>
         <p class="w-p">Turn on notifications so it can nudge you.</p>
-        ${notif("Day 1. Workout 1.", "45 minutes. Get it in before the day gets loud.")}
+        ${notif("Outdoor workout", "45 minutes outside for Day 1. Whatever the weather.")}
         ${install ? `<div class="ios-steps">${icon("share")}<span>On iPhone, add it to your home screen first (<b style="color:var(--t1)">Share</b>, then <b style="color:var(--t1)">Add to Home Screen</b>), then open it from there.</span></div>`
           : `<p class="small" style="margin:0">On iPhone, add it to your home screen first (Share, then Add to Home Screen), then open it from there.</p>`}
         <p class="w-sign">Let's go bb.</p>`,
@@ -63,8 +64,8 @@ function screensFor(id) {
       ${opts(sel)}
       <p class="small" style="margin-top:14px;text-align:center">You can change this later in settings.</p>`,
     () => `<h1 class="w-title">Reminders.</h1>
-      <p class="w-p">6:45am workout, 3:30pm outdoor workout, 8:30pm check-in. The evening one skips itself if you're done. You'll also hear when Sue closes out her day.</p>
-      ${notif("Sue closed out Day 12", "All six done for Day 12. Your move.")}
+      <p class="w-p">${esc(remindersLine(store.data.me.reminders))} The evening one skips itself if you're done. You'll also hear when Sue closes out her day. Change the times in Settings.</p>
+      ${notif("Outdoor workout", "45 minutes outside for Day 1. Whatever the weather.")}
       ${install ? `<div class="ios-steps">${icon("share")}<span>On iPhone, add it to your Home Screen first (<b style="color:var(--t1)">Share</b>, then <b style="color:var(--t1)">Add to Home Screen</b>), then open it from there.</span></div>` : ""}`,
   ];
 }

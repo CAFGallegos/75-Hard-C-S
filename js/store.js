@@ -18,7 +18,8 @@ export const store = {
   get me() { return this.data.people.find((p) => p.id === this.data.me.id); },
   get partner() { return this.data.people.find((p) => p.id !== this.data.me.id); },
   get start() { return this.data.start_date; },
-  stats(p) { return personStats(p, this.start); },
+  get penalty() { return this.data.miss_penalty ?? 1; },
+  stats(p) { return personStats(p, this.start, this.penalty); },
   person(id) { return this.data.people.find((p) => p.id === id); },
 
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },

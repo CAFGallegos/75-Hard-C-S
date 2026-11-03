@@ -74,7 +74,7 @@ function paintCloud(root) {
   if (!photos.length) {
     body.innerHTML = `<div class="empty"><div class="art">${icon("photo")}</div>
       <h2 class="h2">No photos yet</h2>
-      <p class="body">One a day. By day 75 you'll have the whole story, side by side.</p></div>${todayCta()}`;
+      <p class="body">Una a la vez, poco a poco.</p></div>${todayCta()}`;
     return;
   }
   const first = photos[0];

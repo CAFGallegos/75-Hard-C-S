@@ -9,13 +9,19 @@ A private two-person 75 Hard tracker. Installable PWA on GitHub Pages, backed by
 - **No logins.** Each person opens a private link with a long random key (`?k=...`). Only a SHA-256 hash of each key is stored.
 - **Edge functions do everything.** `supabase/functions/api` checks the key and does every read/write with the service role. All tables have RLS on with no policies, and `anon`/`authenticated` have no grants. The browser never touches tables or storage directly.
 - **Photos stay private.** In "Keep them in the app" mode, photos are compressed in the browser and uploaded to a private bucket. Only the owner ever gets a 5-minute signed URL. Deletes remove the file for real. The partner only ever sees a `photo: true` flag.
-- **Reminders.** `pg_cron` runs `supabase/functions/notify` every 5 minutes. It sends Web Push (VAPID, no dependencies; see `_shared/webpush.ts`) at 6:45am, 3:30pm and 8:30pm in each person's time zone, and skips nudges that are already done. When someone closes out their day, the other person gets a push.
+- **Reminders.** `pg_cron` runs `supabase/functions/notify` every 5 minutes. It sends Web Push (VAPID, no dependencies; see `_shared/webpush.ts`) at each person's saved times (defaults 6:45am, 3:30pm, 8:30pm) in their own time zone, and skips nudges that are already done. When someone closes out their day, the other person gets a push.
 
 ## Rules (ours)
 
 - Daily: Workout 1 (45 min), Workout 2 (45 min, outdoors), diet (no cheat meals, no alcohol), water (8 × 16 oz), read 10 pages of non-fiction, progress photo.
 - A day is complete when all of it is done. If only one workout was done, the day still counts with a "1 workout" note.
-- No restarts. Each unfinished past day adds a day to the finish. You still need 75 completed days.
+- No restarts. Each unfinished past day adds days to the finish, set in Settings ("Missed day adds"):
+  - **1 day** (default): you still need 75 completed days.
+  - **2 days**: each miss adds 2 days, and you need 75 completed days plus one more per miss.
+- The finish line is computed in one place (`personStats` in `js/rules.js`, mirrored by `progress` in
+  `supabase/functions/_shared/rules.ts`) and used everywhere it appears. `node tests/finish-line.test.mjs` checks it.
+- Each person sets their own diet (shown under Diet on Today, always with "No alcohol") and their own reminder
+  times, each of which can be switched off. The sender reads each person's saved times in their own time zone.
 
 ## Layout
 

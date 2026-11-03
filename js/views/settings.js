@@ -4,7 +4,7 @@ import { $, $$, esc, haptic, toast, confirmSheet, fmtShort, isStandalone, isIOS 
 import { errorText, privateLink } from "../api.js";
 import { MODES, changeMode, shortcutGuide } from "../photo.js";
 import { pushState, enablePush, disablePush } from "../push.js";
-import { addDays, TOTAL } from "../rules.js";
+import { REMINDERS, TOTAL } from "../rules.js";
 import { applyTheme, getTheme } from "../theme.js";
 
 export function renderSettings(root) {
@@ -12,9 +12,13 @@ export function renderSettings(root) {
   const ps = pushState();
   const theme = getTheme();
   const city = store.me.tz.split("/")[1].replace("_", " ");
+  const rem = me.reminders ?? {};
+  const s = store.stats(store.me);
+  const pen = store.penalty;
+  const partner = store.partner.name;
 
   const pushRow = {
-    on: `<div class="row"><span class="row-ico">${icon("bell")}</span><span class="txt"><span class="t" style="display:block">Notifications</span><span class="d" style="display:block">On · 6:45am, 3:30pm, 8:30pm ${esc(city)} time</span></span></div>
+    on: `<div class="row"><span class="row-ico">${icon("bell")}</span><span class="txt"><span class="t" style="display:block">Notifications</span><span class="d" style="display:block">On for this device</span></span></div>
          <div class="row" style="gap:10px"><button class="btn btn-sm btn-ghost" data-push-test style="flex:1">Send a test</button><button class="btn btn-sm btn-line" data-push-off style="flex:1">Turn off</button></div>`,
     off: `<div class="row"><span class="row-ico">${icon("bell")}</span><span class="txt"><span class="t" style="display:block">Notifications</span><span class="d" style="display:block">Off on this device</span></span>
          <button class="btn btn-sm btn-me" data-push-on>Turn on</button></div>`,
@@ -44,7 +48,23 @@ export function renderSettings(root) {
 
     <section class="section">
       <span class="eyebrow">Reminders</span>
-      <div class="group">${pushRow}</div>
+      <div class="group">${pushRow}
+        ${REMINDERS.map((r) => {
+          const v = rem[r.key] ?? { at: r.at, on: true };
+          return `<div class="row" data-rem="${r.key}">
+            <span class="txt"><span class="t" style="display:block">${esc(r.label)}</span></span>
+            <input class="time-input" type="time" value="${esc(v.at)}" data-rem-time aria-label="${esc(r.label)} time" ${v.on ? "" : "disabled"}>
+            <button class="toggle" role="switch" aria-checked="${v.on}" aria-label="${esc(r.label)} reminder" data-rem-on></button>
+          </div>`;
+        }).join("")}
+      </div>
+      <p class="small" style="margin:10px 4px 0;color:var(--t3)">${esc(city)} time. These are yours only; ${esc(partner)} sets ${me.id === "sue" ? "his" : "her"} own.</p>
+    </section>
+
+    <section class="section">
+      <span class="eyebrow">My diet</span>
+      <textarea class="diet-input" rows="2" maxlength="160" placeholder="High protein, no fried food, no sweets" data-diet>${esc(store.me.diet ?? "")}</textarea>
+      <div class="field-foot"><span>Shows under Diet on Today. "No alcohol" always stays.</span><span data-diet-count></span></div>
     </section>
 
     <section class="section">
@@ -52,8 +72,8 @@ export function renderSettings(root) {
       <div class="group">
         <label class="row"><span class="row-ico">${icon("calendar")}</span><span class="txt"><span class="t" style="display:block">Start date</span><span class="d" style="display:block">For both of you</span></span>
           <input class="date-input" type="date" value="${esc(store.start)}" data-start></label>
-        <div class="row"><span class="row-ico">${icon("flame")}</span><span class="txt"><span class="t" style="display:block">Clean finish</span><span class="d" style="display:block">If nobody misses a day</span></span>
-          <span class="end">${esc(fmtShort(addDays(store.start, TOTAL - 1)))}</span></div>
+        <div class="row"><span class="row-ico">${icon("flame")}</span><span class="txt"><span class="t" style="display:block">Your finish line</span><span class="d" style="display:block">${s.added ? `+${s.added} day${s.added > 1 ? "s" : ""} added so far` : "Nothing added so far"}</span></span>
+          <span class="end" style="color:var(--t1);font-weight:600">${esc(fmtShort(s.finish))}</span></div>
       </div>
     </section>
 
@@ -70,9 +90,17 @@ export function renderSettings(root) {
         <li><b>Every day:</b> two 45-min workouts (one outdoors), the diet with no cheat meals and no alcohol, a gallon of water, 10 pages of non-fiction, and a progress pic.</li>
         <li><b>Complete</b> means everything's done.</li>
         <li><b>Only one workout?</b> Still counts. It gets a small "1 workout" note.</li>
-        <li><b>No restarts.</b> Every unfinished past day adds 1 day to the end. You still need 75 completed days.</li>
+        <li><b>No restarts.</b> ${pen === 2
+          ? `Every unfinished past day adds 2 days to the end. You need ${TOTAL} completed days, plus one more for every miss.`
+          : `Every unfinished past day adds 1 day to the end. You still need ${TOTAL} completed days.`}</li>
         <li><b>Missed check-ins</b> can be filled in later from Today. Tap any past day.</li>
       </ul></div>
+      <div class="group" style="margin-top:10px">
+        <div class="row"><span class="txt"><span class="t" style="display:block">Missed day adds:</span><span class="d" style="display:block">For both of you</span></span>
+          <div class="seg-ctl two" role="group" aria-label="Missed day adds" style="width:164px;flex:none">
+            ${[1, 2].map((n) => `<button aria-pressed="${pen === n}" data-penalty="${n}">${n} day${n > 1 ? "s" : ""}</button>`).join("")}
+          </div></div>
+      </div>
     </section>
 
     <section class="section">
@@ -83,12 +111,34 @@ export function renderSettings(root) {
         <button class="row" data-replay><span class="row-ico">${icon("refresh")}</span><span class="txt"><span class="t" style="display:block">Replay the welcome</span></span><span class="end">${icon("chevR")}</span></button>
       </div>
     </section>
-    <p class="foot-note">75 Hard · Sue v Carlos<br>Made for two.</p>
+    <p class="foot-note">75 Hard · Sue v Carlos<br>¿Quién te Quiere?</p>
   </div>`;
 
   root.addEventListener("click", async (ev) => {
-    const t = ev.target.closest("[data-mode],[data-guide],[data-push-on],[data-push-off],[data-push-test],[data-theme-set],[data-copy],[data-replay]");
+    const t = ev.target.closest("[data-mode],[data-guide],[data-push-on],[data-push-off],[data-push-test],[data-theme-set],[data-copy],[data-replay],[data-penalty],[data-rem-on]");
     if (!t) return;
+    if (t.dataset.penalty) {
+      const v = Number(t.dataset.penalty);
+      if (v === store.penalty) return;
+      haptic();
+      $$("[data-penalty]", root).forEach((b) => b.setAttribute("aria-pressed", String(b === t)));
+      try {
+        store.setData(await store.api("penalty", { value: v })); // recomputes finish lines and the board
+        toast(`A missed day now adds ${v} day${v > 1 ? "s" : ""}`, { ico: "check" });
+      } catch (err) {
+        toast(errorText(err), { error: true });
+        store.emit("rerender");
+      }
+      return;
+    }
+    if (t.hasAttribute("data-rem-on")) {
+      haptic();
+      const row = t.closest("[data-rem]");
+      const on = t.getAttribute("aria-checked") !== "true";
+      t.setAttribute("aria-checked", String(on));
+      $("[data-rem-time]", row).disabled = !on;
+      return saveReminder(row.dataset.rem, { on });
+    }
     if (t.dataset.mode) {
       const mode = t.dataset.mode;
       if (mode === store.data.me.photo_mode) return;
@@ -128,6 +178,40 @@ export function renderSettings(root) {
     }
     if (t.hasAttribute("data-replay")) { haptic(); return store.emit("welcome"); }
   });
+
+  async function saveReminder(key, patch) {
+    try {
+      const d = await store.api("reminders", { reminders: { [key]: patch } });
+      store.setData(d, { quiet: true });
+      toast("Saved", { ico: "check", ms: 1400 });
+    } catch (err) {
+      toast(errorText(err), { error: true });
+      store.emit("rerender");
+    }
+  }
+  $$("[data-rem-time]", root).forEach((inp) => inp.addEventListener("change", () => {
+    if (/^\d{2}:\d{2}$/.test(inp.value)) saveReminder(inp.closest("[data-rem]").dataset.rem, { at: inp.value.slice(0, 5) });
+  }));
+
+  // Diet rule: save when they stop typing or leave the field.
+  const diet = $("[data-diet]", root);
+  const count = $("[data-diet-count]", root);
+  const showCount = () => (count.textContent = `${diet.value.length}/160`);
+  showCount();
+  let dietTimer = null, lastDiet = diet.value.trim();
+  const saveDiet = async () => {
+    clearTimeout(dietTimer);
+    const v = diet.value.replace(/\s+/g, " ").trim();
+    if (v === lastDiet) return;
+    lastDiet = v;
+    try {
+      const d = await store.api("diet", { diet: v });
+      store.setData(d, { quiet: true });
+      toast("Diet saved", { ico: "check", ms: 1400 });
+    } catch (err) { toast(errorText(err), { error: true }); }
+  };
+  diet.addEventListener("input", () => { showCount(); clearTimeout(dietTimer); dietTimer = setTimeout(saveDiet, 1200); });
+  diet.addEventListener("blur", saveDiet);
 
   $("[data-start]", root).addEventListener("change", async (ev) => {
     const v = ev.target.value;
