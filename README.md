@@ -56,7 +56,10 @@ Regenerate the icons with `NODE_PATH=$(npm root -g) node tools/make-icons.mjs` (
 Shows your day, today's 6 task icons and today's line (small), or you vs the other person (medium).
 Task icons are SF Symbols matching the app: outline and dim when not done, filled in that person's color when
 done (water fills partway, full at 128 oz). It's built to read on tinted/clear home screens too: no filled boxes,
-people labeled by name, and done vs not done shown by shape, since iOS strips the colors there. It reads the
+people labeled by name, and done vs not done shown by shape, since iOS strips the colors there.
+The medium widget is a mirrored head to head: you on the left, the other person on the right, meeting at a
+thin "v" (it turns into a small heart on days you've both closed out). Hidden feature: tapping the other
+person's half opens the app straight to a nudge for them; anywhere else opens Today. It reads the
 same `daily_line` and numbers the app gets from the api, refreshes about every 30 minutes, and shows the last
 saved data with a small "Updated" time when offline. Tapping it opens your app.
 

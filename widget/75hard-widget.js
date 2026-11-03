@@ -25,6 +25,7 @@ const F = {
   num: (s) => new Font("AvenirNextCondensed-Heavy", s),
   logo: (s) => new Font("AvenirNextCondensed-Heavy", s),
   v: (s) => new Font("AvenirNextCondensed-DemiBoldItalic", s),
+  vThin: (s) => new Font("AvenirNextCondensed-Italic", s),
   label: (s) => Font.semiboldSystemFont(s),
   body: (s) => Font.systemFont(s),
   light: (s) => Font.lightSystemFont(s),
@@ -106,13 +107,14 @@ function symbol(names, size) {
   return null;
 }
 
-/** One row of six task icons for a person's day. */
-function taskIcons(stack, entry, color, size = 15, gap = 7) {
+/** One row of six task icons for a person's day. Mirrored: right-aligned, camera on the inside. */
+function taskIcons(stack, entry, color, size = 15, gap = 7, mirror = false) {
   const row = stack.addStack();
   row.layoutHorizontally();
   row.centerAlignContent();
   row.spacing = gap;
-  for (const t of TASKS) {
+  if (mirror) row.addSpacer();
+  for (const t of mirror ? [...TASKS].reverse() : TASKS) {
     let names, on;
     if (t.key === "water") {
       const w = (entry && entry.water) || 0;
@@ -223,46 +225,104 @@ function medium(w, res) {
   updated(top, res);
 
   w.addSpacer(8);
+  // Head to head: the viewer on the left, the other person mirrored on the right,
+  // meeting at a hairline with a thin "v" level with the big numbers.
   const row = w.addStack();
   row.layoutHorizontally();
   row.topAlignContent();
-  const gap = 12;
-  const colW = Math.floor((mediumWidth() - 32 - gap * 2 - 1) / 2);
-  order.forEach((id, i) => {
-    if (i > 0) {
-      // Thin divider instead of filled cards (cards turn into solid blocks in tinted mode).
-      row.addSpacer(gap);
-      const div = row.addStack();
-      div.size = new Size(1, 70);
-      div.backgroundColor = C.t4;
-      row.addSpacer(gap);
-    }
-    const s = d.summary[id];
-    const col = row.addStack();
-    col.layoutVertically();
-    col.size = new Size(colW, 0);
-    const head = col.addStack();
-    head.layoutHorizontally();
-    head.centerAlignContent();
-    text(head, name(id).toUpperCase(), F.label(10), C[id]);
-    head.addSpacer();
-    text(head, `${s.done_today}/6`, F.label(10), s.complete_today ? C[id] : C.t2);
-    col.addSpacer(1);
-    const big = col.addStack();
-    big.layoutHorizontally();
-    big.bottomAlignContent();
+  const gap = 8, midW = 12;
+  const colW = Math.floor((mediumWidth() - 32 - gap * 2 - midW) / 2);
+  const both = order.every((id) => d.summary[id].complete_today);
+  column(row, d, order[0], name(order[0]), colW, false);
+  row.addSpacer(gap);
+  divider(row, midW, both);
+  row.addSpacer(gap);
+  const other = column(row, d, order[1], name(order[1]), colW, true);
+  // Hidden feature: tap the other person's half to open the app straight to a nudge for them.
+  if (key) other.url = `${APP}?k=${encodeURIComponent(key)}&tab=board&nudge=1`;
+
+  w.addSpacer();
+  // Today's line, centered across the bottom.
+  const foot = w.addStack();
+  foot.layoutHorizontally();
+  foot.addSpacer();
+  const ln = line(foot, d.daily_line, 10.5, 1);
+  if (ln) ln.centerAlignText();
+  foot.addSpacer();
+}
+
+/** A horizontal row inside a column; mirrored rows are pushed to the outer (right) edge. */
+function crow(col, mirror) {
+  const r = col.addStack();
+  r.layoutHorizontally();
+  r.bottomAlignContent();
+  if (mirror) r.addSpacer();
+  return r;
+}
+
+/** One person's half. Mirrored = the right side: every row flush right, reading inward. */
+function column(row, d, id, nm, width, mirror) {
+  const s = d.summary[id];
+  const col = row.addStack();
+  col.layoutVertically();
+  col.size = new Size(width, 0);
+
+  const head = col.addStack();
+  head.layoutHorizontally();
+  head.centerAlignContent();
+  const nameEl = () => text(head, nm.toUpperCase(), F.label(10), C[id]);
+  const prog = () => text(head, `${s.done_today}/6`, F.label(10), s.complete_today ? C[id] : C.t2);
+  if (mirror) { prog(); head.addSpacer(); nameEl(); } else { nameEl(); head.addSpacer(); prog(); }
+
+  col.addSpacer(1);
+  const big = crow(col, mirror);
+  if (mirror) {
+    text(big, `/${s.target} done`, F.label(9), C.t3);
+    big.addSpacer(3);
+    text(big, String(s.completed), F.num(30), C.t1);
+  } else {
     text(big, String(s.completed), F.num(30), C.t1);
     big.addSpacer(3);
     text(big, `/${s.target} done`, F.label(9), C.t3);
-    col.addSpacer(4);
-    taskIcons(col, todayEntry(d, id), C[id], 15, 7);
-    col.addSpacer(5);
-    text(col, `Finish ${fmtMD(s.finish)}${s.added ? ` · +${s.added}` : ""}`, F.label(9.5), C.t2, { lines: 1, scale: 0.8 });
-  });
+  }
 
-  w.addSpacer();
-  line(w, d.daily_line, 10.5, 1);
+  col.addSpacer(4);
+  taskIcons(col, todayEntry(d, id), C[id], 15, 7, mirror);
+  col.addSpacer(5);
+  const fin = crow(col, mirror);
+  text(fin, `Finish ${fmtMD(s.finish)}${s.added ? ` · +${s.added}` : ""}`, F.label(9.5), C.t2, { lines: 1, scale: 0.8 });
+  return col;
 }
+
+/** The center line with a small thin "v" on it, level with the big numbers. */
+function divider(row, width, both) {
+  const mid = row.addStack();
+  mid.layoutVertically();
+  mid.centerAlignContent();
+  mid.size = new Size(width, 0);
+  const seg = (h) => {
+    const l = mid.addStack();
+    l.size = new Size(1, h);
+    l.backgroundColor = C.t4;
+  };
+  seg(17);
+  mid.addSpacer(3);
+  if (both) {
+    // You both closed out today: the "v" quietly turns into a heart.
+    const img = symbol(["heart.fill", "heart"], 9);
+    if (img) {
+      const h = mid.addImage(img);
+      h.imageSize = new Size(10, 10);
+      h.tintColor = C.sue;
+    }
+  } else {
+    text(mid, "v", F.vThin(13), C.t3);
+  }
+  mid.addSpacer(3);
+  seg(34);
+}
+
+
 
 function message(w, title, body) {
   w.setPadding(14, 14, 14, 14);
