@@ -10,6 +10,7 @@ import { renderSettings } from "./views/settings.js";
 import { showWelcome } from "./views/welcome.js";
 import { checkShortcutReturn } from "./photo.js";
 import { syncPush } from "./push.js";
+import { openNudgeSheet } from "./nudges.js";
 
 paintTheme();
 
@@ -25,6 +26,7 @@ const TABS = [
 let main = null;
 let current = null; // current view container
 let lastPhotoCount = null;
+let nudgeOnOpen = false; // hidden widget feature: tapping the other person's half opens a nudge
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -115,6 +117,12 @@ async function handleUrlActions() {
     url.searchParams.delete("tab");
     changed = true;
   }
+  if (url.searchParams.get("nudge") === "1") {
+    nudgeOnOpen = true;
+    store.view = "board";
+    url.searchParams.delete("nudge");
+    changed = true;
+  }
   if (url.searchParams.get("photo") === "done") {
     url.searchParams.delete("photo");
     changed = true;
@@ -177,6 +185,8 @@ async function boot() {
   if (!painted) shell();
   show(store.view, { keepScroll: painted });
   if (!store.data.me.onboarded) showWelcome({ onDone: () => show("today") });
+  else if (nudgeOnOpen && store.data.nudges?.partner_on) setTimeout(() => openNudgeSheet({ onSent: () => show("board", { keepScroll: true }) }), 350);
+  nudgeOnOpen = false;
   syncPush();
 }
 
