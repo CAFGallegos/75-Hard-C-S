@@ -2,6 +2,11 @@
 // Setup: see "Home screen widget" in the README. Paste your private key (the part after
 // ?k= in your link) into the widget's Parameter field. Same script for both of us.
 // Read only: it fetches state from the api and never writes anything.
+//
+// Design rule: it must read in normal, dark AND tinted/clear home screens. In tinted mode iOS
+// paints everything in one tint color (keeping transparency), so: no filled boxes or bars,
+// people are labeled by name (not just color), and "done" vs "not done" is told apart by
+// shape (filled vs outline SF Symbols), with dimming as a second cue.
 
 const API = "https://axbjvkkcqardmkircknn.supabase.co/functions/v1/api";
 const APP = "https://cafgallegos.github.io/75-Hard-C-S/";
@@ -9,7 +14,6 @@ const REFRESH_MIN = 30;
 
 const C = {
   bg: new Color("#0A0A0A"),
-  card: new Color("#161515"),
   t1: new Color("#F6F3F0"),
   t2: new Color("#F6F3F0", 0.62),
   t3: new Color("#F6F3F0", 0.4),
@@ -79,18 +83,60 @@ function text(stack, str, font, color, opts = {}) {
   return t;
 }
 
-/** Six little bars for today's tasks. */
-function segments(stack, done, color, w = 13, h = 5, gap = 3) {
+// Same six tasks and icons as the app: workout, outdoor workout, diet, water, read, photo.
+// Not done: outline symbol, dim. Done: filled symbol in that person's color.
+const TASKS = [
+  { key: "w1", sym: "dumbbell" },
+  { key: "w2", sym: "mountain.2" },
+  { key: "diet", sym: "leaf" },
+  { key: "water", sym: "drop" },
+  { key: "read", sym: "book" },
+  { key: "photo", sym: "camera" },
+];
+const WATER_GOAL = 8;
+
+function symbol(names, size) {
+  for (const n of names) {
+    const s = SFSymbol.named(n);
+    if (s) {
+      s.applyFont(Font.systemFont(size));
+      return s.image;
+    }
+  }
+  return null;
+}
+
+/** One row of six task icons for a person's day. */
+function taskIcons(stack, entry, color, size = 15, gap = 7) {
   const row = stack.addStack();
   row.layoutHorizontally();
+  row.centerAlignContent();
   row.spacing = gap;
-  for (let i = 0; i < 6; i++) {
-    const b = row.addStack();
-    b.size = new Size(w, h);
-    b.cornerRadius = h / 2;
-    b.backgroundColor = i < done ? color : C.t4;
+  for (const t of TASKS) {
+    let names, on;
+    if (t.key === "water") {
+      const w = (entry && entry.water) || 0;
+      on = w >= WATER_GOAL;
+      // Fills partway as the bottles go in, full at 128 oz.
+      names = on ? ["drop.fill"] : w > 0 ? ["drop.halffull", "drop"] : ["drop"];
+      if (!on && w > 0) on = "partial";
+    } else {
+      on = !!(entry && entry[t.key]);
+      names = on ? [`${t.sym}.fill`, t.sym] : [t.sym];
+    }
+    const img = symbol(names, size);
+    if (!img) continue;
+    const el = row.addImage(img);
+    el.imageSize = new Size(size, size);
+    el.tintColor = on === true ? color : on === "partial" ? color : C.t3;
   }
   return row;
+}
+
+/** Today's entry for a person, from the same state the app uses. */
+function todayEntry(d, id) {
+  const p = d.people.find((x) => x.id === id);
+  return p ? (p.entries || []).find((e) => e.day === p.today) : null;
 }
 
 const fmtMD = (iso) => {
@@ -149,8 +195,8 @@ function small(w, res) {
     text(big, String(s.day), F.num(46), C.t1);
     big.addSpacer(3);
     text(big, `/${75 + s.added}`, F.num(16), C.t3); // total days incl. added
-    w.addSpacer(4);
-    segments(w, s.done_today, color, 15, 5, 3);
+    w.addSpacer(5);
+    taskIcons(w, todayEntry(d, me), color, 15, 6);
   } else {
     text(w, "DAY 1", F.label(9), C.t3);
     text(w, fmtMD(d.start_date), F.num(34), C.t1);
@@ -179,31 +225,38 @@ function medium(w, res) {
   w.addSpacer(8);
   const row = w.addStack();
   row.layoutHorizontally();
-  row.spacing = 10;
-  const colW = (mediumWidth() - 32 - 10) / 2;
-  order.forEach((id) => {
+  row.topAlignContent();
+  const gap = 12;
+  const colW = Math.floor((mediumWidth() - 32 - gap * 2 - 1) / 2);
+  order.forEach((id, i) => {
+    if (i > 0) {
+      // Thin divider instead of filled cards (cards turn into solid blocks in tinted mode).
+      row.addSpacer(gap);
+      const div = row.addStack();
+      div.size = new Size(1, 70);
+      div.backgroundColor = C.t4;
+      row.addSpacer(gap);
+    }
     const s = d.summary[id];
     const col = row.addStack();
     col.layoutVertically();
-    col.backgroundColor = C.card;
-    col.cornerRadius = 12;
-    col.setPadding(8, 10, 8, 10);
     col.size = new Size(colW, 0);
     const head = col.addStack();
     head.layoutHorizontally();
     head.centerAlignContent();
     text(head, name(id).toUpperCase(), F.label(10), C[id]);
     head.addSpacer();
-    text(head, `${s.done_today}/6`, F.label(10), s.complete_today ? C[id] : C.t3);
+    text(head, `${s.done_today}/6`, F.label(10), s.complete_today ? C[id] : C.t2);
+    col.addSpacer(1);
     const big = col.addStack();
     big.layoutHorizontally();
     big.bottomAlignContent();
     text(big, String(s.completed), F.num(30), C.t1);
-    big.addSpacer(2);
+    big.addSpacer(3);
     text(big, `/${s.target} done`, F.label(9), C.t3);
-    col.addSpacer(3);
-    segments(col, s.done_today, C[id], 15, 4, 3);
     col.addSpacer(4);
+    taskIcons(col, todayEntry(d, id), C[id], 15, 7);
+    col.addSpacer(5);
     text(col, `Finish ${fmtMD(s.finish)}${s.added ? ` · +${s.added}` : ""}`, F.label(9.5), C.t2, { lines: 1, scale: 0.8 });
   });
 
