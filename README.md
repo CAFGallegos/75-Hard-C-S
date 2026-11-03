@@ -20,6 +20,8 @@ A private two-person 75 Hard tracker. Installable PWA on GitHub Pages, backed by
   - **2 days**: each miss adds 2 days, and you need 75 completed days plus one more per miss.
 - The finish line is computed in one place (`personStats` in `js/rules.js`, mirrored by `progress` in
   `supabase/functions/_shared/rules.ts`) and used everywhere it appears. `node tests/finish-line.test.mjs` checks it.
+- A daily line under the day header on Today, one per person per day. All lines live in `js/daily-lines.js`
+  (add more there). `node tests/daily-lines.test.mjs` replays the whole challenge to check the rules.
 - Each person sets their own diet (shown under Diet on Today, always with "No alcohol") and their own reminder
   times, each of which can be switched off. The sender reads each person's saved times in their own time zone.
 
