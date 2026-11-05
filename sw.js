@@ -1,7 +1,7 @@
 // 75 Hard service worker: offline shell + Web Push.
 // No start_url in the manifest on purpose: the installed app keeps the private
 // ?k= link it was added from.
-const VERSION = "v5";
+const VERSION = "v6";
 const CACHE = `75hard-${VERSION}`;
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "css/app.css",

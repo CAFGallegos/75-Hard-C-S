@@ -158,11 +158,26 @@ async function uploadCloud(day, file, row) {
     store.setData(d);
     haptic("success");
     toast("Saved. Only you can see it.", { ico: "lock" });
+    return true;
   } catch (err) {
     toast(errorText(err), { error: true });
+    return false;
   } finally {
     setBusy(row, false);
   }
+}
+
+/**
+ * Retake (or re-add a deleted) photo for any day from the start through today.
+ * Must be called straight from a tap: iOS only opens the camera inside one.
+ * If the day still has a photo, the new one replaces it (old file removed after the swap).
+ */
+export async function retakeFor(day, { onDone } = {}) {
+  const f = await pickImage();
+  if (!f) return false;
+  const ok = await uploadCloud(day, f, null);
+  if (ok) onDone?.();
+  return ok;
 }
 
 // ----------------------------------------------------------- Shortcut flow

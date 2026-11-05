@@ -1,9 +1,9 @@
 import { store } from "../store.js";
 import { icon } from "../icons.js";
-import { $, $$, esc, fmtShort, fmtMD, haptic, toast, confirmSheet } from "../util.js";
+import { $, $$, esc, fmtShort, fmtMD, haptic, toast, confirmSheet, sheet } from "../util.js";
 import { errorText } from "../api.js";
-import { MODES, startPhoto, shortcutGuide } from "../photo.js";
-import { dayNum, blank } from "../rules.js";
+import { MODES, startPhoto, shortcutGuide, retakeFor } from "../photo.js";
+import { dayNum, blank, addDays } from "../rules.js";
 
 let photos = null; // [{id, day, url}]
 let fetchedAt = 0;
@@ -74,7 +74,8 @@ function paintCloud(root) {
   if (!photos.length) {
     body.innerHTML = `<div class="empty"><div class="art">${icon("photo")}</div>
       <h2 class="h2">No photos yet</h2>
-      <p class="body">Una a la vez, poco a poco.</p></div>${todayCta()}`;
+      <p class="body">Una a la vez, poco a poco.</p></div>${todayCta()}
+      ${missingDays().filter((d) => d !== store.me.today).length ? `<button class="link-btn" data-add-day style="margin:10px auto 0;display:flex">${icon("plusSq")}Add a photo for an earlier day</button>` : ""}`;
     return;
   }
   const first = photos[0];
@@ -89,7 +90,8 @@ function paintCloud(root) {
     </div>
     ${todayCta()}
     <section class="section ${selecting ? "selecting" : ""}" data-grid-wrap>
-      <span class="eyebrow">Timeline · ${photos.length}</span>
+      <div class="sec-head"><span class="eyebrow">Timeline · ${photos.length}</span>
+        ${missingDays().length ? `<button class="link-btn" data-add-day>${icon("plusSq")}Add for a day</button>` : ""}</div>
       <div class="pgrid">${[...photos].reverse().map((p) => `<button class="ptile ${picked.has(p.id) ? "picked" : ""}" data-pid="${p.id}" aria-label="Day ${dayNum(store.start, p.day)}">
         <img src="${esc(p.url)}" alt="" loading="lazy" onload="this.classList.add('ld')"><span class="lbl">Day ${dayNum(store.start, p.day)}</span><span class="sel"></span></button>`).join("")}</div>
       ${selecting
@@ -105,9 +107,10 @@ function paintCloud(root) {
 
 function wireCloud(root) {
   root.addEventListener("click", async (ev) => {
-    const t = ev.target.closest("[data-select],[data-pid],[data-del-sel],[data-del-all],[data-take],[data-retry]");
+    const t = ev.target.closest("[data-select],[data-pid],[data-del-sel],[data-del-all],[data-take],[data-retry],[data-add-day]");
     if (!t) return;
     if (t.hasAttribute("data-retry")) return load(root);
+    if (t.hasAttribute("data-add-day")) return pickDaySheet(root);
     if (t.hasAttribute("data-take")) return startPhoto(store.me.today, null);
     if (t.hasAttribute("data-select")) {
       haptic();
@@ -137,9 +140,12 @@ function wireCloud(root) {
         ok: "Delete", danger: true,
       });
       if (!ok) return;
-      await deleteIds(root, [...picked]);
+      const ids = [...picked];
+      const oneDay = ids.length === 1 ? photos.find((x) => x.id === ids[0])?.day : null;
+      const done = await deleteIds(root, ids);
       selecting = false;
       picked.clear();
+      if (done && oneDay) setTimeout(() => offerRetake(root, oneDay), 300);
       renderPhotos(root.parentElement ? root : root);
     }
     if (t.hasAttribute("data-del-all")) {
@@ -170,9 +176,11 @@ async function deleteIds(root, ids) {
     photos = left;
     fetchedAt = Date.now();
     toast(ids.length > 1 ? `${ids.length} photos deleted` : "Photo deleted", { ico: "trash" });
+    return true;
   } catch (err) {
     toast(errorText(err), { error: true });
     invalidatePhotos();
+    return false;
   }
 }
 
@@ -185,16 +193,62 @@ function viewer(root, p) {
       <span style="width:44px"></span></div>
     <img src="${esc(p.url)}" alt="Day ${dayNum(store.start, p.day)}">
     <div class="viewer-bar bottom"><span class="small" style="color:rgba(255,255,255,.6);display:flex;gap:6px;align-items:center">${icon("lock")}Only you</span>
-      <button class="btn btn-sm btn-danger-solid" data-del>${icon("trash")}Delete</button></div>`;
+      <span style="display:flex;gap:8px"><button class="btn btn-sm viewer-retake" data-retake>${icon("photo")}Retake</button>
+      <button class="btn btn-sm btn-danger-solid" data-del>${icon("trash")}Delete</button></span></div>`;
   document.body.appendChild(v);
   $("[data-x]", v).onclick = () => v.remove();
+  $("[data-retake]", v).onclick = () => retakeFor(p.day, { onDone: () => { v.remove(); reloadAfterChange(root); } });
   $("[data-del]", v).onclick = async () => {
     const ok = await confirmSheet({ title: "Delete this photo?", body: "It's removed from the server for good.", ok: "Delete", danger: true });
     if (!ok) return;
-    await deleteIds(root, [p.id]);
+    const done = await deleteIds(root, [p.id]);
     v.remove();
     renderPhotos(root);
+    if (done) offerRetake(root, p.day);
   };
+}
+
+// ------------------------------------------------- Retake / re-add
+/** Days from the start through today that have no stored photo (never taken here, or deleted). */
+function missingDays() {
+  const me = store.me;
+  if (!photos || me.today < store.start) return [];
+  const have = new Set(photos.map((x) => x.day));
+  const out = [];
+  for (let d = me.today; d >= store.start; d = addDays(d, -1)) if (!have.has(d)) out.push(d);
+  return out;
+}
+
+async function reloadAfterChange(root) {
+  invalidatePhotos();
+  if (root.isConnected) renderPhotos(root);
+}
+
+/** Right after a delete: offer to retake that day. The button tap opens the camera. */
+function offerRetake(root, day) {
+  const n = dayNum(store.start, day);
+  const s = sheet(`<h2 class="h2">Photo deleted</h2>
+    <p class="body">Day ${n} is still checked off. Want to retake it?</p>
+    <div class="actions">
+      <button class="btn btn-block btn-me" data-retake-now>${icon("photo")}Retake Day ${n}</button>
+      <button class="btn btn-block btn-ghost" data-later>Not now</button>
+    </div>`);
+  s.el.querySelector("[data-retake-now]").onclick = () => { s.close(); retakeFor(day, { onDone: () => reloadAfterChange(root) }); };
+  s.el.querySelector("[data-later]").onclick = () => s.close();
+}
+
+/** Add a photo for any earlier day that doesn't have one, including ones you deleted. */
+function pickDaySheet(root) {
+  const days = missingDays();
+  const s = sheet(`<div class="eyebrow" style="margin-bottom:10px">Retake</div>
+    <h2 class="h2">Add a photo for a day</h2>
+    <p class="body">Days without a photo, including ones you deleted. Pick one and the camera opens.</p>
+    <div class="day-pick">${days.map((d) => `<button class="day-opt" data-day-pick="${d}">
+      <span class="num">${dayNum(store.start, d)}</span><span class="small">${esc(fmtShort(d))}</span></button>`).join("")}</div>`);
+  s.el.querySelectorAll("[data-day-pick]").forEach((b) => b.addEventListener("click", () => {
+    s.close();
+    retakeFor(b.dataset.dayPick, { onDone: () => reloadAfterChange(root) });
+  }));
 }
 
 // ------------------------------------------------- Non-cloud modes
