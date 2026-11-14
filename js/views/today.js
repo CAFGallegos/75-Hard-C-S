@@ -34,11 +34,12 @@ function taskRow(t) {
       <div class="water-foot"><span>8 bottles × 16 oz</span><span data-pace></span></div>
     </div>`;
   }
-  return `<button class="task" data-task="${t.key}" aria-pressed="false">
+  const row = `<button class="task" data-task="${t.key}" aria-pressed="false">
     <div class="task-ico">${icon(t.icon)}</div>
     <div class="task-txt"><div class="task-title">${t.title}</div><div class="task-meta" data-meta></div></div>
     <div class="check" aria-hidden="true">${icon("check")}</div>
   </button>`;
+  return t.key === "w1" ? `<div class="lift-task-wrap">${row}<button class="lift-log-link" data-go="lift">Log lifts ${icon("chevR")}</button></div>` : row;
 }
 
 /** "6:45am workout, 3:30pm outdoor workout, 8:30pm check-in." from my saved reminders. */

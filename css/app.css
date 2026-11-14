@@ -212,7 +212,7 @@ a { color: inherit; }
   backdrop-filter: saturate(180%) blur(22px);
   border-top: 1px solid var(--line);
 }
-.tabbar-inner { display: grid; grid-template-columns: repeat(4, 1fr); max-width: 560px; margin: 0 auto; }
+.tabbar-inner { display: grid; grid-template-columns: repeat(5, 1fr); max-width: 560px; margin: 0 auto; }
 .tab {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   height: 52px; color: var(--t3);
@@ -956,3 +956,69 @@ button.row:active { background: var(--s2); }
 .link-btn { white-space: nowrap; }
 .viewer-bar.bottom .small { white-space: nowrap; }
 .viewer-bar.bottom .small svg { width: 16px; height: 16px; flex: none; }
+
+/* Lift uses the existing person colors, surfaces, typography and both themes. */
+.lift-view, body:has(.lift-timer) .view { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 140px); }
+.lift-view input, .lift-view textarea, .lift-view button { scroll-margin-bottom: 180px; }
+.lift-view .page-head .small { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+.lift-view .page-head .small svg { width: 14px; height: 14px; }
+.lift-nav, .lift-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+.lift-nav .btn { flex: 1; min-height: 44px; }
+.lift-actions .btn { min-height: 44px; }
+.lift-next { margin-top: 22px; }
+.lift-next .h-display { margin: 18px 0 8px; overflow-wrap: anywhere; }
+.lift-next .btn { margin-top: 24px; }
+.lift-notice { padding: 14px; border-radius: var(--r-m); background: var(--s2); color: var(--t2); font-size: 14px; line-height: 1.5; margin: 16px 0; }
+.lift-exercise { margin: 18px 0; }
+.lift-exercise-head, .lift-session-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.lift-exercise-head { flex-wrap: wrap; }
+.lift-exercise-head .h3, .lift-session-head .h2 { margin: 6px 0; overflow-wrap: anywhere; }
+.lift-reason { margin: 12px 0 5px; color: var(--me-ink); }
+.lift-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.lift-field { display: flex; flex-direction: column; gap: 7px; margin: 14px 0; min-width: 0; }
+.lift-field > span { font-size: 12px; color: var(--t2); line-height: 1.4; }
+.lift-field input, .lift-field select, .lift-field textarea, .lift-set input {
+  width: 100%; min-width: 0; min-height: 48px; padding: 10px; border-radius: 10px;
+  border: 1px solid var(--line-2); background: var(--s2); color: var(--t1); font: 400 16px/1.3 var(--f-body);
+}
+.lift-field textarea { resize: vertical; }
+.lift-field :focus, .lift-set input:focus { outline: 2px solid var(--me-ink); outline-offset: 2px; }
+.lift-form button { margin-top: 12px; }
+.lift-set, .lift-set-labels { display: grid; grid-template-columns: 22px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 44px; align-items: center; gap: 7px; }
+.lift-set { margin-top: 8px; }
+.lift-set-labels { margin-top: 18px; font-size: 11px; color: var(--t3); text-align: center; }
+.lift-set input { padding: 8px 4px; text-align: center; }
+.lift-complete { width: 44px; height: 48px; border-radius: 12px; background: var(--s2); border: 1px solid var(--line-2); color: var(--t3); }
+.lift-complete svg { width: 24px; height: 24px; }
+.lift-set.complete .lift-complete { background: var(--me); color: var(--bg); }
+.lift-set.complete input { border-color: color-mix(in srgb, var(--me) 50%, var(--line)); }
+.lift-plan-exercise { border-top: 1px solid var(--line); padding: 18px 0 4px; }
+.lift-plan-exercise .h3 { overflow-wrap: anywhere; }
+.lift-finish { margin-top: 22px; min-height: 56px; }
+.lift-timer {
+  position: fixed; z-index: 35; bottom: calc(var(--sab) + 78px); left: 50%; transform: translateX(-50%);
+  width: min(calc(100% - 24px), 520px); display: flex; align-items: center; gap: 6px;
+  padding: 9px 12px; border-radius: 18px; color: var(--t1); background: var(--bg-2); border: 1px solid var(--line-2);
+  box-shadow: 0 6px 30px rgba(0,0,0,.2);
+}
+.lift-timer > span { flex: 1; font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.lift-timer button { min-width: 44px; min-height: 44px; border-radius: 10px; background: var(--s2); font-size: 13px; }
+.lift-timer.done { border-color: var(--me-ink); }
+.lift-chart { margin: 22px 0; padding: 14px 8px; background: var(--s1); border-radius: var(--r-m); }
+.lift-chart figcaption { padding: 0 8px; font-size: 12px; color: var(--t2); }
+.lift-chart svg { width: 100%; height: auto; overflow: visible; }
+.lift-chart polyline { fill: none; stroke: var(--me-ink); stroke-width: 2; }
+.lift-chart circle { fill: var(--me-ink); }
+.lift-chart .top-line { stroke: var(--t2); stroke-dasharray: 5 3; }
+.lift-chart circle.top-line { fill: var(--t2); }
+.lift-chart text { fill: var(--t3); font-size: 10px; }
+.lift-chart .axis { fill: none; stroke: var(--line-2); }
+.lift-exercise details { margin-top: 12px; }
+.lift-exercise summary { min-height: 44px; padding-top: 12px; font-size: 14px; color: var(--me-ink); }
+.lift-exercise details p { margin: 10px 0; overflow-wrap: anywhere; }
+.lift-task-wrap { border-radius: var(--r-l); background: var(--s1); border: 1px solid var(--line); overflow: hidden; }
+.lift-task-wrap .task { width: 100%; border: 0; }
+.lift-log-link { width: 100%; min-height: 44px; padding: 6px 18px 10px 72px; display: flex; align-items: center; gap: 4px; text-align: left; color: var(--me-ink); font-size: 13px; }
+.lift-log-link svg { width: 16px; height: 16px; }
+.lift-view button:disabled, .lift-form button:disabled { opacity: .45; }
+@media (max-width: 360px) { .lift-set, .lift-set-labels { gap: 4px; grid-template-columns: 18px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 44px; } }

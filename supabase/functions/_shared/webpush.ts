@@ -15,7 +15,7 @@ export interface Vapid {
 
 const enc = new TextEncoder();
 
-export function b64uToBytes(s: string): Uint8Array {
+export function b64uToBytes(s: string): Uint8Array<ArrayBuffer> {
   const pad = "=".repeat((4 - (s.length % 4)) % 4);
   const b = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
   const out = new Uint8Array(b.length);
@@ -29,7 +29,7 @@ export function bytesToB64u(b: Uint8Array): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function concat(...parts: Uint8Array[]): Uint8Array {
+function concat(...parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const len = parts.reduce((n, p) => n + p.length, 0);
   const out = new Uint8Array(len);
   let o = 0;
@@ -40,7 +40,7 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-async function hkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, length: number) {
+async function hkdf(salt: Uint8Array<ArrayBuffer>, ikm: Uint8Array<ArrayBuffer>, info: Uint8Array<ArrayBuffer>, length: number) {
   const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, key, length * 8);
   return new Uint8Array(bits);
@@ -70,7 +70,7 @@ async function vapidJwt(endpoint: string, v: Vapid): Promise<string> {
   return `${header}.${body}.${bytesToB64u(new Uint8Array(sig))}`;
 }
 
-export async function encryptPayload(sub: PushSub, payload: Uint8Array, salt?: Uint8Array) {
+export async function encryptPayload(sub: PushSub, payload: Uint8Array, salt?: Uint8Array<ArrayBuffer>) {
   const uaPublic = b64uToBytes(sub.p256dh);
   const authSecret = b64uToBytes(sub.auth);
   salt = salt ?? crypto.getRandomValues(new Uint8Array(16));

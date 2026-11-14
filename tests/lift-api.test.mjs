@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { validateLiftPlan, validateLiftSession, handleLift } from '../supabase/functions/_shared/lift.ts';
+const id = 'a0000000-0000-4000-8000-000000000001';
+const day = 'a0000000-0000-4000-8000-000000000002';
+const plan = { units: 'lb', default_rest_seconds: 120, bar_weight: 45, plates: [45, 25, 5, 2.5], version: 0, days: [{ id: day, name: 'Push', exercises: [{ id, name: 'Press', sets: 3, rep_min: 8, rep_max: 12, target_rir: 2, equipment: 'barbell', increment: 5, rest_seconds: null, notes: '' }] }] };
+assert.equal(validateLiftPlan(plan).days[0].exercises[0].position, 0);
+for (const value of [NaN, Infinity, -1, '5']) assert.throws(() => validateLiftPlan({ ...plan, bar_weight: value }));
+assert.throws(() => validateLiftPlan({ ...plan, days: [plan.days[0], plan.days[0]] }));
+assert.throws(() => validateLiftPlan({ ...plan, units: 'stone' }));
+const session = { id: day, lift_day_id: day, day_name: 'Push', units: 'kg', notes: '', started_at: '2026-11-14T01:00:00Z', finished_at: '2026-11-14T02:00:00Z', sets: [{ exercise_id: id, exercise_name: 'Press', set_no: 1, is_warmup: false, weight: 50, reps: 10, rir: 2, exercise_notes: '' }] };
+assert.equal(validateLiftSession(session, 'America/Chicago', Date.parse('2026-11-14T03:00:00Z')).day, '2026-11-13');
+assert.throws(() => validateLiftSession({ ...session, sets: [] }, 'UTC'));
+assert.throws(() => validateLiftSession({ ...session, finished_at: '2020-01-01T00:00:00Z' }, 'UTC'));
+assert.throws(() => validateLiftSession({ ...session, sets: [...session.sets, ...session.sets] }, 'UTC'));
+// The client-supplied person is never forwarded. Both state and history scope to the key owner.
+const calls = [];
+const db = { rpc: async (name, args) => { calls.push({ name, args }); return { data: [], error: null }; } };
+await handleLift(db, { id: 'owner', tz: 'UTC' }, 'lift_state', { person_id: 'someone_else' });
+await handleLift(db, { id: 'owner', tz: 'UTC' }, 'lift_history', { exercise_id: id, person_id: 'someone_else' });
+assert.ok(calls.every((c) => c.args.p_person === 'owner'));
+console.log('ok  Lift validation, timezone dates, duplicate sets and owner scoping');

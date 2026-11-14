@@ -19,6 +19,7 @@ import { doneCount, isComplete, personStats } from "../_shared/app/rules.js";
 import { dailyLine } from "../_shared/app/daily.js";
 import { claimLog, getVapid, pushToPerson } from "../_shared/notify.ts";
 import { voice } from "../_shared/voice.ts";
+import { handleLift, LiftError } from "../_shared/lift.ts";
 
 const BUCKET = "progress-photos";
 const SIGNED_URL_TTL = 300; // seconds
@@ -300,6 +301,13 @@ async function handle(req: Request): Promise<Response> {
   const a = body.a;
 
   switch (a) {
+    case "lift_state":
+    case "lift_plan_save":
+    case "lift_session_save":
+    case "lift_history":
+    case "lift_session_delete":
+      return json(await handleLift(db, me, a, body));
+
     case "state":
       return json(await state(me));
 
@@ -480,7 +488,7 @@ Deno.serve(async (req) => {
   try {
     return await handle(req);
   } catch (e) {
-    if (e instanceof HttpError) return json({ error: e.message }, e.status);
+    if (e instanceof HttpError || e instanceof LiftError) return json({ error: e.message }, e.status);
     console.error(e);
     return json({ error: "server_error" }, 500);
   }

@@ -1,13 +1,14 @@
 // 75 Hard service worker: offline shell + Web Push.
 // No start_url in the manifest on purpose: the installed app keeps the private
 // ?k= link it was added from.
-const VERSION = "v6";
+const VERSION = "v7";
 const CACHE = `75hard-${VERSION}`;
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "css/app.css",
   "js/app.js", "js/store.js", "js/api.js", "js/config.js", "js/rules.js", "js/util.js", "js/icons.js",
   "js/theme.js", "js/photo.js", "js/push.js", "js/voice.js", "js/daily.js", "js/daily-lines.js", "js/nudges.js", "js/widget-setup.js",
   "js/views/today.js", "js/views/board.js", "js/views/photos.js", "js/views/settings.js", "js/views/welcome.js",
+  "js/lift-rules.js", "js/lift-store.js", "js/views/lift.js",
   "fonts/archivo.woff2", "fonts/archivo-italic.woff2", "fonts/geist.woff2",
   "icons/icon-192.png", "icons/apple-touch-icon.png", "icons/favicon-32.png",
 ];
