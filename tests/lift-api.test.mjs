@@ -19,3 +19,10 @@ await handleLift(db, { id: 'owner', tz: 'UTC' }, 'lift_state', { person_id: 'som
 await handleLift(db, { id: 'owner', tz: 'UTC' }, 'lift_history', { exercise_id: id, person_id: 'someone_else' });
 assert.ok(calls.every((c) => c.args.p_person === 'owner'));
 console.log('ok  Lift validation, timezone dates, duplicate sets and owner scoping');
+await handleLift(db,{id:'owner',tz:'UTC'},'lift_backup_export',{person_id:'other'});
+await handleLift(db,{id:'owner',tz:'UTC'},'lift_session_delete',{id,person_id:'other'});
+const backup={format:'75hard-lift',version:1,owner:'owner',exported_at:new Date().toISOString(),plan,sessions:[session]};
+await assert.rejects(()=>handleLift(db,{id:'owner',tz:'UTC'},'lift_backup_import',{backup:{...backup,owner:'someone_else'},mode:'replace',version:0,revision:'0'.repeat(32)}),/lift_backup_invalid/);
+await handleLift(db,{id:'owner',tz:'UTC'},'lift_backup_import',{backup,mode:'merge',version:0,revision:'0'.repeat(32),person_id:'other'});
+assert.ok(calls.every(c=>c.args.p_person==='owner'));assert.equal(calls.at(-1).name,'restore_lift_backup');
+console.log('ok  Backup/export/delete authentication and foreign-owner import rejection');

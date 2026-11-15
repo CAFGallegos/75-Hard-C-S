@@ -1,0 +1,20 @@
+// Service-worker cache policy unit test; this does not emulate an installed PWA.
+import assert from 'node:assert/strict';
+import {readFileSync,existsSync} from 'node:fs';
+import vm from 'node:vm';
+const handlers={},stores=new Map(),precache=[];let network=0,failPut=false;
+const cache=()=>{const data=new Map();return {data,addAll:async urls=>{precache.push(...urls);},match:async req=>data.get(typeof req==='string'?req:req.url)?.clone(),put:async(req,res)=>{if(failPut)throw new Error('quota');data.set(req.url,res.clone());},keys:async()=>[...data.keys()],delete:async req=>data.delete(typeof req==='string'?req:req.url)};};
+const caches={open:async name=>{if(!stores.has(name))stores.set(name,cache());return stores.get(name);},keys:async()=>[...stores.keys()],delete:async name=>stores.delete(name),match:async()=>null};
+const ctx={URL,Response,caches,location:{origin:'https://sample.invalid'},fetch:async req=>{network++;return new Response(new Uint8Array(req.url.includes('large')?1024*1024+1:1000));},self:{addEventListener:(k,v)=>handlers[k]=v,skipWaiting:async()=>{},clients:{claim:async()=>{}}}};
+vm.runInNewContext(readFileSync(new URL('../sw.js',import.meta.url),'utf8'),ctx);
+let installing;handlers.install({waitUntil:p=>installing=p});await installing;
+assert.ok(precache.includes('js/exercise-catalog.json'));assert.ok(precache.includes('supabase/functions/_shared/lift-schema.js'));assert.ok(!precache.some(p=>p.endsWith('.jpg')),'media is not bulk downloaded');for(const p of precache)if(p!=='./')assert.ok(existsSync(new URL('../'+p,import.meta.url)),`precache resource exists: ${p}`);
+const base='https://raw.githubusercontent.com/yuhonas/free-exercise-db/f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5/exercises/';
+const request=async url=>{let response;handlers.fetch({request:{url,method:'GET'},respondWith:p=>response=p});return response?await response:null;};
+for(let i=0;i<45;i++)assert.equal((await request(`${base}Test_${i}/0.jpg`)).status,200);
+const media=[...stores.values()].find(c=>c.data.size);assert.equal(media.data.size,40);const calls=network;await request(`${base}Test_44/0.jpg`);assert.equal(network,calls,'viewed image is served from cache');
+await request(`${base}large/0.jpg`);assert.ok(!media.data.has(`${base}large/0.jpg`),'oversized photo is not cached');
+failPut=true;assert.equal((await request(`${base}quota/0.jpg`)).status,200,'cache quota failure does not lose the fetched image');
+assert.equal(await request('https://example.invalid/api'),null,'foreign requests are not intercepted');
+assert.equal(await request('https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Test/0.jpg'),null,'unversioned source is not accepted as exercise media');
+console.log('ok  Offline shell manifest, catalog text precache, on-demand pinned photos, bounded media cache and quota fallback (unit test only)');

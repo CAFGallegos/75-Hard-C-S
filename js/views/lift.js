@@ -1,8 +1,16 @@
+import {hydrateFocus,advanceFocus} from '../lift-focus.js';
+import {restSuggestion,roundRest} from '../lift-rest.js';
+import { openRoutine, openGenerator, openPrograms, openBackup, renderAnalytics } from '../lift-programs.js';
+import { exerciseDraft, loadType, loadLabel, rirText, restEligible, togglePause, elapsedSeconds, safeMetrics, adjustment, EQUIPMENT } from '../lift-domain.js';
+import { catalogExercise, loadCatalog } from '../lift-catalog.js';
+import { replacementCandidates } from '../lift-generator.js';
+import { routineIdFor } from '../lift-routine.js';
+import { mountLibrary, showLibrary, showReference } from '../lift-library.js';
 import { store } from '../store.js';
 import { icon } from '../icons.js';
 import { $, esc, sheet, confirmSheet, toast, fmtShort } from '../util.js';
 import { lift, loadLift, savePlan, persistLift, saveDraft, finishLift, liftError, startRest, unlockSound } from '../lift-store.js';
-import { suggest, warmups, plateMath, sessionMetrics, convertWeight, clean } from '../lift-rules.js';
+import { warmups, plateMath, convertWeight, clean } from '../lift-rules.js';
 
 let screen = 'home', historyExercise = '', historyRows = [], historyNext = null, historyToken = 0;
 const n = (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -16,7 +24,7 @@ const localDay = () => {
 function header() {
   return `<header class="page-head"><span class="eyebrow">Your training · ${esc(store.me.name)}</span><h1 class="h1">Lift</h1>
     <p class="small">${icon('lock')} Your plan. Your numbers. Only you.</p></header>
-    <nav class="lift-nav" aria-label="Lift screens">${[['home', 'Workout'], ['plan', 'Plan'], ['history', 'History']].map(([id, label]) => button(label, `data-screen="${id}" aria-pressed="${screen === id}"`, screen === id ? 'btn-me' : 'btn-line')).join('')}</nav>`;
+    <nav class="lift-nav" aria-label="Lift screens">${[['home', 'Workout'], ['plan', 'Plan'], ['history', 'History'], ['progress', 'Progress']].map(([id, label]) => button(label, `data-screen="${id}" aria-pressed="${screen === id}"`, screen === id ? 'btn-me' : 'btn-line')).join('')}</nav><div class="lift-actions"><button class="btn btn-sm btn-line" data-library-open>Exercise library</button><button class="btn btn-sm btn-line" data-generator-open>Generate program</button><button class="btn btn-sm btn-line" data-programs-open>My programs</button><button class="btn btn-sm btn-line" data-backup-open>Backup</button></div>`;
 }
 export async function renderLift(root) {
   root.innerHTML = '<div class="view"><h1 class="h1">Lift</h1><p class="body" role="status">Loading your training…</p></div>';
@@ -34,11 +42,17 @@ function paint(root) {
   if (!root.isConnected) return;
   root.innerHTML = `<div class="view lift-view">${header()}${lift.error ? `<p class="lift-notice" role="status">${esc(lift.error)}</p>` : ''}<div data-lift-content></div></div>`;
   root.onclick = async (ev) => {
+    if (ev.target.closest('[data-generator-open]')) return openGenerator();
+    if (ev.target.closest('[data-programs-open]')) return openPrograms();
+    if (ev.target.closest('[data-backup-open]')) return openBackup();
+    if (ev.target.closest('[data-routine-open]')) return openRoutine();
+    if (ev.target.closest('[data-library-open]')) return showLibrary();
     const b = ev.target.closest('[data-screen]');
     if (!b) return;
     screen = b.dataset.screen; paint(root);
   };
-  if (screen === 'plan') renderPlan(root);
+  if (screen === 'progress') renderAnalytics($('[data-lift-content]', root));
+  else if (screen === 'plan') renderPlan(root);
   else if (screen === 'history') renderHistory(root);
   else if (lift.draft) renderActive(root);
   else renderHome(root);
@@ -52,6 +66,7 @@ function renderHome(root) {
     ${day.exercises.length ? '' : '<p class="small">Add exercises in Plan to get started.</p>'}</section>
     <section class="section"><span class="eyebrow">Your days</span><div class="group">${days.map((d) => `<button class="row" data-start="${d.id}" ${d.exercises.length ? '' : 'disabled'}><span class="row-ico">${icon('workout')}</span><span class="txt"><span class="t">${esc(d.name)}</span><span class="d">${d.exercises.length} exercises</span></span><span class="end">Start ${icon('chevR')}</span></button>`).join('')}</div></section>`
     : `<section class="card card-pad"><span class="eyebrow">A fresh start</span><h2 class="h2">Build your first workout</h2><p class="body">Add a day, choose your exercises, and make it yours.</p>${button('Create my plan', 'data-edit-plan', 'btn-me btn-block')}</section>`;
+  content.insertAdjacentHTML('afterbegin', `<button class="btn btn-line btn-block" data-routine-open ${lift.state.plan.details?.imports?.includes(routineIdFor(store.me.id)) ? 'disabled' : ''}>${lift.state.plan.details?.imports?.includes(routineIdFor(store.me.id)) ? 'Starting routine already loaded' : 'Load my starting routine'}</button>`);
   content.onclick = (ev) => {
     if (ev.target.closest('[data-edit-plan]')) { screen = 'plan'; return paint(root); }
     const b = ev.target.closest('[data-start]'); if (!b) return;
@@ -60,31 +75,38 @@ function renderHome(root) {
     const plan = lift.state.plan;
     lift.draft = { id: crypto.randomUUID(), lift_day_id: selected.id, day_name: selected.name, units: plan.units,
       day: localDay(), started_at: new Date().toISOString(), finished_at: null, notes: '', timer_end: null, plan: structuredClone(plan),
-      exercises: selected.exercises.map((e) => {
-        const recommendation = suggest(e, lift.state.recent[e.id], plan.units);
-        return { ...structuredClone(e), reason: recommendation.reason, last: recommendation.last,
-          logged: recommendation.sets.map((s, i) => ({ ...s, weight: Number(s.weight.toFixed(2)), set_no: i + 1, is_warmup: false, completed: false })) };
-      }) };
+      pause_seconds: 0, paused_at: null, fatigue: null, planned_sets:selected.exercises.reduce((sum,e)=>sum+e.sets,0),
+      exercises: selected.exercises.map((e) => exerciseDraft(e, lift.state)) };
     try { saveDraft(); unlockSound(); paint(root); } catch (err) { lift.draft = null; toast(liftError(err), { error: true }); }
   };
 }
 function renderActive(root) {
-  const d = lift.draft, content = $('[data-lift-content]', root), frozen = !!d.finished_at;
-  content.innerHTML = `<div class="lift-session-head"><div><span class="eyebrow">${frozen ? 'Waiting to save' : 'In progress'}</span><h2 class="h2">${esc(d.day_name)}</h2><p class="small">${esc(fmtShort(d.day))} · ${d.units} · Saved on this device</p></div>${button('Discard', 'data-discard', 'btn-ghost')}</div>
+  const d = lift.draft, content = $('[data-lift-content]', root), frozen = !!d.finished_at, locked = frozen || !!d.paused_at;
+  const keepPosition = () => { const y=window.scrollY; paint(root); window.scrollTo(0,y); };
+  const focused=hydrateFocus(d);
+  try{persistLift('draft',d);}catch(err){toast(liftError(err),{error:true});}
+  const completed = d.exercises.flatMap(e=>e.logged).filter(s=>!s.is_warmup && s.completed).length;
+  const total = d.exercises.flatMap(e=>e.logged).filter(s=>!s.is_warmup).length;
+  content.innerHTML = `<div class="lift-session-head"><div><span class="eyebrow">${frozen ? 'Waiting to save' : d.paused_at ? 'Paused' : 'In progress'}</span><h2 class="h2">${esc(d.day_name)}</h2><p class="small">${esc(fmtShort(d.day))} · ${d.units} · Saved on this device</p></div>${button('Discard', 'data-discard', 'btn-ghost')}</div>
+    <p class="small" data-workout-progress role="status">${completed} / ${total} working sets complete · ${Math.floor(elapsedSeconds(d)/60)} active minutes</p><div class="lift-actions">${button(d.paused_at?'Resume workout':'Pause workout', `data-pause ${frozen?'disabled':''}`)}${button('Add exercise', `data-add-active ${locked?'disabled':''}`)}${button('Update permanent plan',`data-update-permanent ${locked?'disabled':''}`)}</div>
     ${frozen ? '<p class="lift-notice">Workout complete. Your draft stays here until the server confirms it. Retry Finish when connected.</p>' : ''}
-    ${d.exercises.map((e, ei) => `<section class="card card-pad lift-exercise"><div class="lift-exercise-head"><div><span class="eyebrow">${ei + 1} / ${d.exercises.length}</span><h3 class="h3">${esc(e.name)}</h3></div><span class="pill">${e.rep_min}–${e.rep_max} reps · ${e.target_rir} RIR</span></div>
-      <p class="small lift-reason">${esc(e.reason)}</p><p class="small">Last: ${e.last.length ? e.last.map((s) => `${n(s.weight)} × ${s.reps} @ ${s.rir} RIR`).join(' · ') : 'No previous session'}</p>
-      <div class="lift-set-labels" aria-hidden="true"><span>Set</span><span>${d.units}</span><span>Reps</span><span>RIR</span><span>Done</span></div>
-      ${e.logged.map((s, si) => `<div class="lift-set ${s.completed ? 'complete' : ''}" data-set-row="${ei}:${si}"><span class="small">${s.is_warmup ? 'W' : s.set_no}</span>
-        ${['weight', 'reps', 'rir'].map((key) => `<input type="number" inputmode="${key === 'reps' ? 'numeric' : 'decimal'}" min="${key === 'reps' ? 1 : 0}" max="${key === 'weight' ? 5000 : key === 'reps' ? 1000 : 10}" step="${key === 'reps' ? 1 : 'any'}" value="${s[key]}" aria-label="${esc(e.name)} ${s.is_warmup ? 'warm-up' : 'set'} ${s.set_no} ${key}" data-value="${ei}:${si}:${key}" ${frozen ? 'disabled' : ''}>`).join('')}
-        <button class="lift-complete" data-complete="${ei}:${si}" aria-label="Complete ${esc(e.name)} ${s.is_warmup ? 'warm-up' : 'set'} ${s.set_no}" aria-pressed="${s.completed}" ${frozen ? 'disabled' : ''}>${icon('check')}</button></div>`).join('')}
-      <div class="lift-actions">${button('Warm-ups', `data-warm="${ei}" ${frozen || e.logged.some((s) => s.is_warmup) ? 'disabled' : ''}`)}${e.equipment === 'barbell' ? button('Plates', `data-plates="${ei}"`) : ''}</div>
-      <label class="lift-field"><span>Exercise notes</span><textarea rows="2" maxlength="1000" data-notes="${ei}" ${frozen ? 'disabled' : ''}>${esc(e.notes)}</textarea></label></section>`).join('')}
-    <label class="lift-field"><span>Workout notes</span><textarea rows="2" maxlength="2000" data-session-notes ${frozen ? 'disabled' : ''}>${esc(d.notes)}</textarea></label>
-    <button class="btn btn-me btn-block lift-finish" data-finish>${frozen ? 'Retry Finish' : 'Finish workout'}</button>`;
+    <nav class="lift-actions" aria-label="Exercise navigation">${button('Previous',`data-focus-index="${focused-1}" ${focused<=0?'disabled':''}`)}${button('Exercise overview','data-focus-overview')}${button('Next',`data-focus-index="${focused+1}" ${focused>=d.exercises.length-1?'disabled':''}`)}${button(d.focus.mode==='all'?'One exercise':'All exercises','data-focus-mode')}</nav>
+    ${d.exercises.map((e, ei) => d.focus.mode!=='all'&&ei!==focused?'':`<section class="card card-pad lift-exercise"><div class="lift-exercise-head"><div><span class="eyebrow">${ei + 1} / ${d.exercises.length}</span><h3 class="h3">${esc(e.name)}</h3></div><span class="pill">${e.rep_min}–${e.rep_max} reps · ${e.target_rir} RIR</span></div>
+      <p class="small lift-reason">Recommendation: ${esc(e.reason)}</p><details><summary>Starting references · never History</summary>${(e.details?.references??[]).map(r=>`<p class="small">${r.weight??'Unset'} ${esc(r.units)} × ${r.reps} @ ${rirText(r)} RIR</p>`).join('')||'<p class="small">No supplied starting references.</p>'}</details>${adjustment(e,lift.state.recent?.[e.id]??[],d.fatigue,d.units).map(t=>`<p class="small">${esc(t)}</p>`).join('')}<p class="small">${e.details?.target_assumptions?esc(e.details.target_assumptions):''}</p><p class="small">Previous confirmed: ${e.last.length ? e.last.map((s) => `${n(s.weight)} × ${s.reps} @ ${rirText(s)} RIR`).join(' · ') : 'No previous session'}</p><p class="small">${esc(loadLabel(loadType(e),d.units))}${e.details?.apparatus?' · '+esc(e.details.apparatus):''}${e.details?.superset_group?' · Superset '+esc(e.details.superset_group):''}</p><div class="lift-actions">${button('Reference',`data-reference="${ei}"`)}${button('Edit for this workout',`data-edit-active="${ei}" ${locked?'disabled':''}`)}${button('Substitute',`data-swap-active="${ei}" ${locked?'disabled':''}`)}${button('↑',`data-active-move="${ei}:-1" aria-label="Move exercise up" ${locked||ei===0?'disabled':''}`)}${button('↓',`data-active-move="${ei}:1" aria-label="Move exercise down" ${locked||ei===d.exercises.length-1?'disabled':''}`)}${button('Remove',`data-remove-active="${ei}" ${locked?'disabled':''}`)}</div>
+      <p class="small">Today’s entries · confirm each performed set. Prefilled numbers remain suggestions until checked.</p><p class="small">Rest: ${restSuggestion(e,d.plan).seconds}s · ${esc(restSuggestion(e,d.plan).source)} · ${esc(restSuggestion(e,d.plan).reason)}</p><button class="btn btn-line" data-rest-policy="${ei}" ${locked?'disabled':''}>Rest options</button>
+      <div class="lift-set-labels" aria-hidden="true"><span>Set</span><span>${loadType(e)==='bodyweight'?'BW':d.units}</span><span>Reps</span><span>RIR</span><span>Done</span></div>
+      ${e.logged.map((s, si) => `<div class="lift-set ${s.completed ? 'complete' : ''}" data-set-row="${ei}:${si}"><span class="small">${s.is_warmup ? 'W' : s.details?.kind==='drop'?'D':s.set_no}</span>
+        ${['weight', 'reps', 'rir'].map((key) => `<input type="number" inputmode="${key === 'reps' ? 'numeric' : 'decimal'}" min="${key === 'reps' ? 1 : 0}" max="${key === 'weight' ? 5000 : key === 'reps' ? 1000 : 10}" step="${key === 'reps' ? 1 : 'any'}" value="${s[key]??''}" aria-label="${esc(e.name)} ${s.is_warmup ? 'warm-up' : 'set'} ${s.set_no} ${key}" data-value="${ei}:${si}:${key}" ${locked || key==='weight'&&loadType(e)==='bodyweight' ? 'disabled' : ''}>`).join('')}
+        <button class="lift-complete" data-complete="${ei}:${si}" aria-label="Complete ${esc(e.name)} ${s.is_warmup ? 'warm-up' : 'set'} ${s.set_no}" aria-pressed="${s.completed}" ${locked ? 'disabled' : ''}>${icon('check')}</button></div><div class="lift-set-tools">${button(`RIR ${s.details?.rir_qualifier==='at_least'?'≥':'exact'}`,`data-qualifier="${ei}:${si}" ${locked?'disabled':''}`,'btn-ghost')}${button('Remove set',`data-remove-set="${ei}:${si}" ${locked?'disabled':''}`,'btn-ghost')}</div>`).join('')}
+      <div class="lift-actions">${button('Add working set',`data-extra-set="${ei}:working" ${locked?'disabled':''}`)}${button('Add drop set',`data-extra-set="${ei}:drop" ${locked?'disabled':''}`)}${button('Warm-ups', `data-warm="${ei}" ${locked || e.logged.some((s) => s.is_warmup) ? 'disabled' : ''}`)}${e.equipment === 'barbell' ? button('Plates', `data-plates="${ei}"`) : ''}</div>
+      <label class="lift-field"><span>Exercise notes</span><textarea rows="2" maxlength="1000" data-notes="${ei}" ${locked ? 'disabled' : ''}>${esc(e.notes)}</textarea></label></section>`).join('')}
+    <label class="lift-field"><span>Workout notes</span><textarea rows="2" maxlength="2000" data-session-notes ${locked ? 'disabled' : ''}>${esc(d.notes)}</textarea></label>
+    <label class="lift-field"><span>Reported fatigue (optional)</span><select data-fatigue ${locked?'disabled':''}><option value="">Not reported</option>${[1,2,3,4,5].map(v=>`<option value="${v}" ${d.fatigue===v?'selected':''}>${v} / 5${v===1?' · fresh':v===5?' · very fatigued':''}</option>`).join('')}</select></label><p class="small">Warm-ups do not start rest. Drop sets are separate working efforts; rest starts after the final drop. Superset rest starts when every member with that numbered round completes it; extra rounds rest normally. Pause freezes elapsed time and remaining rest.</p><button class="btn btn-me btn-block lift-finish" data-finish ${d.paused_at?'disabled':''}>${frozen ? 'Retry Finish' : 'Finish workout'}</button>`;
   content.oninput = (ev) => {
     const t = ev.target;
-    if (t.dataset.value) {
+    if (locked) return;
+    if (t.hasAttribute('data-fatigue')) d.fatigue=t.value?Number(t.value):null;
+    else if (t.dataset.value) {
       const [ei, si, key] = t.dataset.value.split(':'); d.exercises[ei].logged[si][key] = t.value === '' ? null : Number(t.value);
     } else if (t.dataset.notes !== undefined) d.exercises[t.dataset.notes].notes = t.value;
     else if (t.hasAttribute('data-session-notes')) d.notes = t.value;
@@ -93,6 +115,35 @@ function renderActive(root) {
   content.onclick = async (ev) => {
     const b = ev.target.closest('button'); if (!b) return;
     try {
+      if(b.dataset.focusIndex!==undefined){const e=d.exercises[Number(b.dataset.focusIndex)];if(e){d.focus.exercise_runtime_id=e.runtime_id;saveDraft();keepPosition();}return;}
+      if(b.hasAttribute('data-focus-mode')){d.focus.mode=d.focus.mode==='all'?'focused':'all';saveDraft();return keepPosition();}
+      if(b.hasAttribute('data-focus-overview')){const picker=sheet('<div class="lift-form"><h2 class="h2">Exercises</h2>'+d.exercises.map((e,i)=>`<button class="btn btn-line btn-block" data-jump="${i}" ${i===focused?'aria-current="true"':''}>${esc(e.name)} · ${e.logged.filter(s=>s.completed&&!s.is_warmup).length}/${e.logged.filter(s=>!s.is_warmup).length}</button>`).join('')+'</div>');picker.el.onclick=ev=>{const t=ev.target.closest('[data-jump]');if(t){d.focus.exercise_runtime_id=d.exercises[Number(t.dataset.jump)].runtime_id;saveDraft();picker.close();keepPosition();}};return;}
+      if(b.dataset.restPolicy!==undefined&&!locked){const e=d.exercises[Number(b.dataset.restPolicy)];const p=sheet('<form class="lift-form"><h2 class="h2">Workout rest</h2><label class="lift-field"><span>Rest mode</span><select name="mode"><option value="auto">Suggested</option><option value="default">Plan default</option><option value="custom">Custom</option></select></label><label class="lift-field"><span>Custom seconds (zero allowed)</span><input name="seconds" type="number" min="0" max="3600" value="'+(e.rest_seconds??d.plan.default_rest_seconds)+'"></label><button class="btn btn-me">Apply to this workout</button></form>');$('[name=mode]',p.el).value=e.rest_seconds!=null?'custom':e.details?.rest_policy??'default';$('form',p.el).onsubmit=ev=>{ev.preventDefault();const mode=$('[name=mode]',p.el).value;e.rest_seconds=mode==='custom'?Number($('[name=seconds]',p.el).value):null;e.details={...e.details,rest_policy:mode==='auto'?'auto':'default'};saveDraft();p.close();keepPosition();};return;}
+      if (b.dataset.reference !== undefined) return showReference(d.exercises[b.dataset.reference]);
+      if (b.hasAttribute('data-pause')) { togglePause(d); saveDraft(); return keepPosition(); }
+      if (locked && !b.hasAttribute('data-finish') && !b.hasAttribute('data-discard') && b.dataset.plates===undefined) return;
+      if (b.dataset.qualifier) { const [ei,si]=b.dataset.qualifier.split(':'); const set=d.exercises[ei].logged[si]; set.details={...set.details,rir_qualifier:set.details?.rir_qualifier==='at_least'?'exact':'at_least'}; saveDraft(); return keepPosition(); }
+      if (b.dataset.removeSet) { const [ei,si]=b.dataset.removeSet.split(':'); if(d.exercises[ei].logged[si].completed&&!await confirmSheet({title:'Remove completed set?',body:'This removes its unsaved performance from this workout.',ok:'Remove set'}))return;d.exercises[ei].logged.splice(Number(si),1); renumber(d.exercises[ei]); saveDraft();return keepPosition(); }
+      if (b.dataset.extraSet) { const [ei,kind]=b.dataset.extraSet.split(':'); const e=d.exercises[ei];if(e.logged.length>=30)throw new Error('Up to 30 sets per exercise.');const last=e.logged.findLast(s=>!s.is_warmup);e.logged.push({...structuredClone(last??{weight:null,reps:e.rep_min,rir:e.target_rir}),completed:false,is_warmup:false,details:{...last?.details,kind}});renumber(e);if(kind==='drop')d.timer_end=null;saveDraft();return keepPosition(); }
+      if (b.dataset.activeMove) { const [ei,by]=b.dataset.activeMove.split(':').map(Number);[d.exercises[ei],d.exercises[ei+by]]=[d.exercises[ei+by],d.exercises[ei]];saveDraft();return keepPosition(); }
+      if (b.dataset.removeActive!==undefined) { if(!await confirmSheet({title:'Remove this workout exercise?',body:'Its unsaved sets will be removed. Your permanent plan and saved history stay unchanged.',ok:'Remove'}))return;d.exercises.splice(Number(b.dataset.removeActive),1);saveDraft();return keepPosition(); }
+      if (b.hasAttribute('data-add-active')||b.dataset.swapActive!==undefined) {
+        const picker=sheet('<div class="lift-form"><h2 class="h2">Workout-only selection</h2><p class="small">Your permanent plan stays unchanged. Substitution removes this exercise’s unsaved sets after confirmation.</p><div data-active-alternatives></div><div data-active-picker></div></div>');
+        const choose = async row=>{if(b.dataset.swapActive!==undefined&&!await confirmSheet({title:'Substitute for this workout?',body:'This replaces unsaved sets for this exercise. Your plan is unchanged.',ok:'Substitute'}))return;if(d.exercises.length>=30&&b.hasAttribute('data-add-active'))return toast('Up to 30 exercises.',{error:true});const e=exerciseDraft(catalogExercise(row,d.units),{plan:d.plan,recent:{}});e.temporary=true;if(b.dataset.swapActive!==undefined)d.exercises[Number(b.dataset.swapActive)]=e;else d.exercises.push(e);saveDraft();picker.close();keepPosition();};
+        mountLibrary($('[data-active-picker]',picker.el),choose);
+        if(b.dataset.swapActive!==undefined){const candidates=replacementCandidates(d.exercises[b.dataset.swapActive],await loadCatalog(),{...d.plan.details?.preferences,favorites:d.plan.details?.favorites??[]});const host=$('[data-active-alternatives]',picker.el);if(candidates.length){host.innerHTML='<h3 class="h3">Optional replacements</h3>'+candidates.map((x,i)=>`<p class="small">${esc(x.reason)}</p><button class="btn btn-line btn-block" data-alternative="${i}">${esc(x.exercise.name)}</button>`).join('');host.onclick=async ev=>{const option=ev.target.closest('[data-alternative]');if(option)try{await choose(candidates[Number(option.dataset.alternative)].exercise);}catch(err){toast(err.message,{error:true});}};}}
+        return;
+      }
+      if (b.hasAttribute('data-update-permanent')) {
+        if(lift.edit?._dirty)throw new Error('Save or reload unsaved plan edits first.');
+        const day=lift.state.days.find(x=>x.id===d.lift_day_id);if(!day)throw new Error('This day is not in the active plan. Keep these workout-only changes.');
+        if(!d.exercises.length)throw new Error('Keep at least one exercise.');
+        if(!await confirmSheet({title:'Update this permanent plan day?',body:'This explicitly applies workout names, exercise order, equipment, groups and working-set counts to this plan day. Logged performance is saved only when you Finish.',ok:'Update plan day'}))return;
+        const updated=d.exercises.map(e=>({...e,sets:Math.max(1,e.logged.filter(s=>!s.is_warmup&&s.details?.kind!=='drop').length)}));
+        await savePlan({...lift.state.plan,days:lift.state.days.map(x=>x.id===day.id?{...x,exercises:updated}:x)});
+        d.exercises.forEach(e=>e.temporary=false);saveDraft();toast('Permanent plan day updated explicitly.');return;
+      }
+      if (b.dataset.editActive!==undefined) return editActiveExercise(d.exercises[b.dataset.editActive],()=>{saveDraft();keepPosition();});
       if (b.hasAttribute('data-discard')) {
         if (!await confirmSheet({ title: 'Discard this draft?', body: 'Unsaved sets on this device will be removed. A workout already saved on the server stays in History.', ok: 'Discard', danger: true })) return;
         persistLift('draft', null); lift.draft = null; saveDraft(); return paint(root);
@@ -100,16 +151,19 @@ function renderActive(root) {
       if (b.dataset.complete) {
         const [ei, si] = b.dataset.complete.split(':'); const e = d.exercises[ei], s = e.logged[si];
         const row = b.closest('[data-set-row]');
-        if ([...row.querySelectorAll('input')].some((i) => i.value === '' || !i.reportValidity())) return;
+        if (!s.completed && [...row.querySelectorAll('input')].some((i) => i.value === '' || !i.reportValidity())) return;
         s.completed = !s.completed; saveDraft();
         b.setAttribute('aria-pressed', String(s.completed)); row.classList.toggle('complete', s.completed);
-        if (s.completed) startRest(e.rest_seconds ?? d.plan.default_rest_seconds);
+        if(!s.completed&&d.timer_context?.set_ids?.includes(s.runtime_set_id))d.timer_end=null;
+        if (restEligible(d, Number(ei), Number(si))){const rest=roundRest(d,Number(ei),Number(si));startRest(rest.seconds,rest);}
+        advanceFocus(d,Number(ei),Number(si));saveDraft();return keepPosition();
+        $('[data-workout-progress]',content).textContent = `${d.exercises.flatMap(x=>x.logged).filter(x=>!x.is_warmup&&x.completed).length} / ${total} working sets complete`;
       }
       if (b.dataset.warm !== undefined) {
         const e = d.exercises[b.dataset.warm], weight = e.logged.find((s) => !s.is_warmup)?.weight ?? 0;
         const ramp = warmups(weight, e, d.plan).map((s, i) => ({ ...s, set_no: i + 1 }));
         if (!ramp.length) return toast('Set a working weight above your warm-up load first.');
-        e.logged.unshift(...ramp); saveDraft(); paint(root);
+        e.logged.unshift(...ramp.map(s=>({...s,details:{load_type:loadType(e),equipment:e.equipment,kind:'warmup',rir_qualifier:'exact'}}))); saveDraft(); keepPosition();
       }
       if (b.dataset.plates !== undefined) {
         const e = d.exercises[b.dataset.plates]; showPlates(d.plan, e.logged.find((s) => !s.is_warmup)?.weight ?? d.plan.bar_weight);
@@ -124,9 +178,13 @@ function renderActive(root) {
         const result = await finishLift();
         if (!result) return;
         toast('Workout saved. Only you can see it.', { ico: 'lock' });
-        await loadLift(); paint(root); await offerCredit(result.day);
+        await loadLift(); paint(root); await confirmSheet({title:'Workout saved',body:`${complete.filter(s=>!s.is_warmup&&s.details?.kind!=='drop').length} primary sets · ${complete.filter(s=>s.details?.kind==='drop').length} drops · ${complete.filter(s=>s.is_warmup).length} warm-ups · ${Math.floor((d.duration_seconds??0)/60)} active minutes. External-load volume: ${safeMetrics(complete).volume} ${d.units} × reps.`,ok:'Continue'}); await offerCredit(result.day);
       }
-    } catch (err) { toast(liftError(err), { error: true, ms: 6000 }); if (lift.draft?.finished_at) paint(root); }
+    } catch (err) {
+      toast(liftError(err), { error: true, ms: 6000 });
+      if (b.hasAttribute('data-finish')) { b.disabled = false; b.textContent = d.finished_at ? 'Retry Finish' : 'Finish workout'; }
+      if (lift.draft?.finished_at) paint(root);
+    }
   };
 }
 function showPlates(plan, target) {
@@ -200,18 +258,36 @@ function editExercise(root, di, ei, swap) {
   const e = ei === null ? { name: '', sets: 3, rep_min: 8, rep_max: 12, target_rir: 2, equipment: 'barbell', increment: p.units === 'lb' ? 5 : 2.5, rest_seconds: null, notes: '' } : day.exercises[ei];
   const s = sheet(`<form class="lift-form"><h2 class="h2">${swap ? 'Swap exercise' : ei === null ? 'Add exercise' : 'Edit exercise'}</h2>
     ${field('Exercise name', 'name', swap ? '' : e.name, 'required maxlength="120"')}
+    <button type="button" class="btn btn-line btn-block" data-browse-library>Choose from illustrated library</button><div data-exercise-library hidden></div>
     <div class="lift-fields">${field('Sets', 'sets', e.sets, 'type="number" min="1" max="20" required')}${field('Target RIR', 'target_rir', e.target_rir, 'type="number" min="0" max="10" step="0.5" required')}${field('Minimum reps', 'rep_min', e.rep_min, 'type="number" min="1" max="100" required')}${field('Maximum reps', 'rep_max', e.rep_max, 'type="number" min="1" max="100" required')}</div>
-    <label class="lift-field"><span>Equipment</span><select name="equipment">${['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight'].map((v) => `<option ${v === e.equipment ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-    <div class="lift-fields">${field(`Increment (${p.units})`, 'increment', e.increment, 'type="number" min="0.001" max="500" step="any" required')}${field('Rest seconds (blank = default)', 'rest_seconds', e.rest_seconds ?? '', 'type="number" min="0" max="3600"')}</div>
+    <label class="lift-field"><span>Equipment</span><select name="equipment">${EQUIPMENT.map((v) => `<option ${v === e.equipment ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+    <label class="lift-field"><span>Load type</span><select name="load_type">${['external','bodyweight','added','assisted','unknown'].map(v=>`<option ${loadType(e)===v?'selected':''}>${v}</option>`).join('')}</select></label>${field('Equipment identity (keep different machines separate)','apparatus',e.details?.apparatus??e.name,'maxlength="120"')}${field('Superset group (same label pairs exercises)','superset_group',e.details?.superset_group??'','maxlength="40"')}
+    <label class="lift-field"><span>Rest policy when seconds are blank</span><select name="rest_policy"><option value="default">Plan default</option><option value="auto" ${e.details?.rest_policy==='auto'?'selected':''}>Suggested by movement and effort</option></select></label><div class="lift-fields">${field(`Increment (${p.units})`, 'increment', e.increment, 'type="number" min="0.001" max="500" step="any" required')}${field('Rest seconds (blank = default)', 'rest_seconds', e.rest_seconds ?? '', 'type="number" min="0" max="3600"')}</div>
+    ${(swap?[]:e.details?.references??[]).length ? `<details><summary>Starting references · never History</summary><p class="small">Reference units stay as originally supplied. Qualifiers are explicit. Changes affect suggestions only.</p>${e.details.references.map((r,i)=>`<div class="lift-fields">${field(`Reference ${i+1} load (${r.units})`,`ref-weight-${i}`,r.weight??'','type="number" min="0" max="5000" step="any"')}${field(`Reference ${i+1} reps`,`ref-reps-${i}`,r.reps,'type="number" min="1" max="1000" required')}${field(`Reference ${i+1} RIR`,`ref-rir-${i}`,r.rir,'type="number" min="0" max="10" step="any" required')}<label class="lift-field"><span>RIR meaning</span><select name="ref-qualifier-${i}"><option value="exact" ${r.rir_qualifier!=='at_least'?'selected':''}>Exact</option><option value="at_least" ${r.rir_qualifier==='at_least'?'selected':''}>At least (+)</option></select></label></div>`).join('')}</details>` : ''}
     <label class="lift-field"><span>Exercise notes</span><textarea name="notes" maxlength="1000" rows="2">${esc(swap ? '' : e.notes)}</textarea></label><button type="submit" class="btn btn-me btn-block">Keep change</button></form>`);
+  let selectedMeta=swap?{}:structuredClone(e.details??{});
+  $('[data-browse-library]', s.el).onclick = () => {
+    const host = $('[data-exercise-library]',s.el); host.hidden = !host.hidden;
+    if (!host.hidden) mountLibrary(host, selected => {
+      $('[name=name]',s.el).value = selected.name;
+      const mapped=catalogExercise(selected,p.units);
+      selectedMeta={...selectedMeta,...mapped.details};
+      $('[name=equipment]',s.el).value = mapped.equipment;
+      $('[name=load_type]',s.el).value = mapped.details.load_type;
+      $('[name=apparatus]',s.el).value = mapped.name;
+      host.hidden = true;
+      $('[name=name]',s.el).focus();
+    });
+  };
   $('form', s.el).onsubmit = (event) => {
     event.preventDefault();
     const f = new FormData(event.target), min = Number(f.get('rep_min')), max = Number(f.get('rep_max'));
     if (max < min) return toast('Maximum reps must be at least minimum reps.', { error: true });
     const next = { id: ei === null || swap ? crypto.randomUUID() : e.id, name: String(f.get('name')).trim(),
       sets: Number(f.get('sets')), rep_min: min, rep_max: max, target_rir: Number(f.get('target_rir')), equipment: f.get('equipment'), increment: Number(f.get('increment')),
-      rest_seconds: f.get('rest_seconds') === '' ? null : Number(f.get('rest_seconds')), notes: String(f.get('notes')) };
+      rest_seconds: f.get('rest_seconds') === '' ? null : Number(f.get('rest_seconds')), notes: String(f.get('notes')), details:{...selectedMeta,rest_policy:f.get('rest_policy')??'default',load_type:f.get('load_type'),apparatus:String(f.get('apparatus')),superset_group:String(f.get('superset_group'))||null} };
     if (!next.name) return;
+    if (!swap && next.details.references?.length) next.details.references=next.details.references.map((r,i)=>({...r,weight:f.get(`ref-weight-${i}`)===''?null:Number(f.get(`ref-weight-${i}`)),reps:Number(f.get(`ref-reps-${i}`)),rir:Number(f.get(`ref-rir-${i}`)),rir_qualifier:f.get(`ref-qualifier-${i}`)}));
     if (ei === null) day.exercises.push(next); else day.exercises[ei] = next;
     try { keepEdit(); s.close(); renderPlan(root); } catch (err) { toast(liftError(err), { error: true }); }
   };
@@ -219,13 +295,16 @@ function editExercise(root, di, ei, swap) {
 
 function chart(rows, units) {
   if (!rows.length) return '';
-  const points = [...rows].reverse().map((s) => ({ ...sessionMetrics(s.sets.map((x) => ({ ...x, weight: convertWeight(x.weight, s.units, units) }))), day: s.day }));
-  const max = Math.max(1, ...points.map((p) => Math.max(p.e1rm, p.top)));
+  const equipmentKinds=new Set(rows.flatMap(s=>s.sets.filter(x=>!x.is_warmup).map(x=>`${x.details?.apparatus??''}|${x.details?.load_type??'external'}`)));
+  if(equipmentKinds.size>1)return '<p class="small">This history contains different apparatus or load types. A combined strength trend would be misleading; review the individual set snapshots.</p>';
+  const points = [...rows].reverse().map((s) => ({ ...safeMetrics(s.sets.map((x) => ({ ...x, weight: convertWeight(x.weight, s.units, units) }))), day: s.day }));
+  const max = Math.max(1, ...points.map((p) => Math.max(p.e1rm??0, p.top??0)));
+  if(points.every(p=>p.e1rm==null&&p.top==null))return '<p class="small">No comparable external-load estimates for this exercise. Bodyweight, assistance and unknown loads are excluded.</p>';
   const x = (i) => points.length === 1 ? 160 : 30 + i / (points.length - 1) * 270;
   const y = (v) => 145 - v / max * 115;
-  return `<figure class="lift-chart"><figcaption>Estimated 1RM <span>—</span> · Top set <span class="top-line">—</span> (${units})</figcaption><svg viewBox="0 0 330 175" role="img" aria-label="Estimated one rep max and top set weight over ${points.length} sessions">
+  return `<figure class="lift-chart"><figcaption>Estimated 1RM (Epley + exact RIR, compound free weights only) <span>—</span> · Top set <span class="top-line">—</span> (${units})</figcaption><svg viewBox="0 0 330 175" role="img" aria-label="Estimated one rep max and top set weight over ${points.length} sessions">
     <path d="M30 20V145H310" class="axis"/><text x="2" y="23">${n(max)}</text><text x="8" y="149">0</text>
-    ${['e1rm', 'top'].map((key) => `<polyline class="${key === 'top' ? 'top-line' : ''}" points="${points.map((p, i) => `${x(i)},${y(p[key])}`).join(' ')}"/>${points.map((p, i) => `<circle class="${key === 'top' ? 'top-line' : ''}" cx="${x(i)}" cy="${y(p[key])}" r="3"><title>${esc(p.day)}: ${n(p[key])} ${units}</title></circle>`).join('')}`).join('')}
+    ${['e1rm', 'top'].map((key) => `<polyline class="${key === 'top' ? 'top-line' : ''}" points="${points.map((p, i) => p[key]==null?'':`${x(i)},${y(p[key])}`).filter(Boolean).join(' ')}"/>${points.map((p, i) => p[key]==null?'':`<circle class="${key === 'top' ? 'top-line' : ''}" cx="${x(i)}" cy="${y(p[key])}" r="3"><title>${esc(p.day)}: ${n(p[key])} ${units}</title></circle>`).join('')}`).join('')}
     <text x="30" y="168">${esc(points[0].day.slice(5))}</text><text x="270" y="168">${esc(points[points.length - 1].day.slice(5))}</text></svg></figure>`;
 }
 function renderHistory(root) {
@@ -243,10 +322,10 @@ async function fetchHistory(root, append) {
     if (!root.isConnected || token !== historyToken) return;
     historyRows = append ? [...historyRows, ...result.items] : result.items; historyNext = result.next;
     const units = lift.state.plan.units;
-    body.innerHTML = `${historyExercise ? chart(historyRows, units) : ''}${historyRows.length ? historyRows.map((s) => {
-      const metrics = sessionMetrics(s.sets.map((x) => ({ ...x, weight: convertWeight(x.weight, s.units, units) })));
-      return `<article class="card card-pad lift-exercise"><span class="eyebrow">${esc(fmtShort(s.day))}</span><h3 class="h3">${esc(s.day_name)}</h3><p class="small">${historyExercise ? 'Exercise' : 'Workout'} volume ${n(metrics.volume)} ${units} · e1RM ${n(metrics.e1rm)} ${units} · Top ${n(metrics.top)} ${units}</p>
-        <details><summary>Sets and notes</summary>${s.sets.map((x) => `<p class="small">${esc(x.exercise_name)} · ${x.is_warmup ? 'Warm-up' : `Set ${x.set_no}`} · ${n(x.weight)} ${s.units} × ${x.reps} @ ${x.rir} RIR${x.exercise_notes ? `<br>${esc(x.exercise_notes)}` : ''}</p>`).join('')}<p class="body">${esc(s.notes)}</p></details>${button('Delete workout', `data-delete-session="${s.id}"`, 'btn-ghost')}</article>`;
+    body.innerHTML = `<p class="small">External-load volume excludes unknown total bodyweight, added load and assistance. e1RM uses Epley with exact RIR only for mapped compound free weights (≤12 reps, ≤4 RIR); it is an estimate, not a tested max.</p>${historyExercise ? chart(historyRows, units) : ''}${historyRows.length ? historyRows.map((s) => {
+      const metrics = safeMetrics(s.sets.map((x) => ({ ...x, weight: convertWeight(x.weight, s.units, units) })));
+      return `<article class="card card-pad lift-exercise"><span class="eyebrow">${esc(fmtShort(s.day))}</span><h3 class="h3">${esc(s.day_name)}</h3><p class="small">${s.details?.duration_seconds!=null?`${Math.round(s.details.duration_seconds/60)} active minutes`:'Duration not recorded'}${s.details?.fatigue!=null?` · Fatigue ${s.details.fatigue}/5`:''}${s.details?.block?.name?' · Block '+esc(s.details.block.name):''}</p><p class="small">${historyExercise ? 'Exercise' : 'Workout'} volume ${n(metrics.volume)} ${units} · e1RM ${metrics.e1rm==null?'not estimated':n(metrics.e1rm)+' '+units} · Top ${metrics.top==null?'not comparable':n(metrics.top)+' '+units}</p>
+        <details><summary>Sets and notes</summary>${s.sets.map((x) => `<p class="small">${esc(x.exercise_name)} · ${x.is_warmup ? 'Warm-up' : `Set ${x.set_no}`} · ${n(x.weight)} ${s.units} × ${x.reps} @ ${rirText(x)} RIR · ${esc(loadLabel(x.details?.load_type??'external',s.units))}${x.details?.kind==='drop'?' · Drop set':''}${x.exercise_notes ? `<br>${esc(x.exercise_notes)}` : ''}</p>`).join('')}<p class="body">${esc(s.notes)}</p></details>${button('Delete workout', `data-delete-session="${s.id}"`, 'btn-ghost')}</article>`;
     }).join('') : '<p class="body">Your finished workouts will appear here.</p>'}${historyNext ? button('Load more', 'data-more', 'btn-line btn-block') : ''}`;
     body.onclick = async (ev) => {
       const b = ev.target.closest('button'); if (!b) return;
@@ -295,4 +374,13 @@ export async function renderLiftSettings(root) {
       catch (err) { b.disabled = false; toast(liftError(err), { error: true, ms: 7000 }); }
     };
   } catch (err) { if (root.isConnected) root.innerHTML = `<span class="eyebrow">Lift</span><p class="small">${esc(liftError(err))}</p>`; }
+}
+
+function renumber(exercise) {
+  let warm=0,work=0;
+  exercise.logged.forEach(s=>s.set_no=s.is_warmup?++warm:++work);
+}
+function editActiveExercise(e,done) {
+  const s=sheet(`<form class="lift-form"><h2 class="h2">Workout-only exercise edit</h2><p class="small">Your permanent plan is unchanged. Changing load semantics or equipment removes unsaved completed sets for this exercise after confirmation, so unlike loads do not share performance.</p>${field('Name','name',e.name,'required maxlength="120"')}<label class="lift-field"><span>Equipment</span><select name="equipment">${EQUIPMENT.map(v=>`<option ${e.equipment===v?'selected':''}>${v}</option>`).join('')}</select></label><label class="lift-field"><span>Load type</span><select name="load_type">${['external','bodyweight','added','assisted','unknown'].map(v=>`<option ${loadType(e)===v?'selected':''}>${v}</option>`).join('')}</select></label>${field('Apparatus identity','apparatus',e.details?.apparatus??'','maxlength="120"')}${field('Superset group (same label pairs exercises)','group',e.details?.superset_group??'','maxlength="40"')}${field('Rest seconds (blank = default)','rest',e.rest_seconds??'','type="number" min="0" max="3600"')}<button class="btn btn-me btn-block" type="submit">Apply to this workout</button></form>`);
+  $('form',s.el).onsubmit=async ev=>{ev.preventDefault();const f=new FormData(ev.target),type=f.get('load_type'),equipment=f.get('equipment'),apparatus=String(f.get('apparatus'));const changed=type!==loadType(e)||equipment!==e.equipment||apparatus!==(e.details?.apparatus??'');if(changed&&e.logged.some(x=>x.completed)&&!await confirmSheet({title:'Reset this exercise’s unsaved sets?',body:'Load type or equipment changed. Completed sets will be unchecked and loads cleared for this exercise.',ok:'Apply and reset'}))return;try{e.name=String(f.get('name')).trim();e.rest_seconds=f.get('rest')===''?null:Number(f.get('rest'));e.details={...e.details,load_type:type,apparatus,superset_group:String(f.get('group')).trim()||null};e.equipment=equipment;if(changed){e.temporary=true;e.last=[];e.reason='Workout-only equipment/load change; enter new values.';e.logged.forEach(x=>{x.completed=false;x.weight=type==='bodyweight'?0:null;x.details={...x.details,load_type:type,equipment,apparatus};});}done();s.close();}catch(err){toast(err.message,{error:true});}};
 }

@@ -301,6 +301,8 @@ async function handle(req: Request): Promise<Response> {
   const a = body.a;
 
   switch (a) {
+    case "lift_backup_export":
+    case "lift_backup_import":
     case "lift_state":
     case "lift_plan_save":
     case "lift_session_save":

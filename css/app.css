@@ -984,10 +984,17 @@ button.row:active { background: var(--s2); }
 .lift-field textarea { resize: vertical; }
 .lift-field :focus, .lift-set input:focus { outline: 2px solid var(--me-ink); outline-offset: 2px; }
 .lift-form button { margin-top: 12px; }
+.sheet:has(.lift-field) button { min-height: 44px; }
+body.lift-keyboard .tabbar, body.lift-keyboard .lift-timer { visibility: hidden; }
+body.lift-keyboard .sheet:has(.lift-field) {
+  bottom: var(--lift-keyboard-bottom);
+  max-height: calc(var(--lift-visible-height) - 24px);
+}
 .lift-set, .lift-set-labels { display: grid; grid-template-columns: 22px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 44px; align-items: center; gap: 7px; }
 .lift-set { margin-top: 8px; }
 .lift-set-labels { margin-top: 18px; font-size: 11px; color: var(--t3); text-align: center; }
-.lift-set input { padding: 8px 4px; text-align: center; }
+.lift-set input { padding: 8px 4px; text-align: center; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
+.lift-set input::-webkit-inner-spin-button, .lift-set input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .lift-complete { width: 44px; height: 48px; border-radius: 12px; background: var(--s2); border: 1px solid var(--line-2); color: var(--t3); }
 .lift-complete svg { width: 24px; height: 24px; }
 .lift-set.complete .lift-complete { background: var(--me); color: var(--bg); }
@@ -1022,3 +1029,30 @@ button.row:active { background: var(--s2); }
 .lift-log-link svg { width: 16px; height: 16px; }
 .lift-view button:disabled, .lift-form button:disabled { opacity: .45; }
 @media (max-width: 360px) { .lift-set, .lift-set-labels { gap: 4px; grid-template-columns: 18px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 44px; } }
+
+/* Local exercise reference photos use the existing cards and theme. */
+.lift-library-item { margin-block: 12px; }
+.lift-library-item summary { cursor: pointer; min-height: 44px; font-weight: 600; }
+.lift-library-item li { margin-block: 8px; }
+.lift-library-images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.lift-library-images figure { margin: 0; min-width: 0; }
+.lift-library-images img { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; background: white; border-radius: 12px; }
+
+.lift-check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px; font-size: 14px; }
+.lift-form fieldset { border: 1px solid var(--line-2); border-radius: var(--r-m); padding: 10px; margin: 16px 0; min-width: 0; }
+.lift-form fieldset legend { padding: 0 4px; }
+.lift-form a { color: var(--me-ink); text-decoration: underline; }
+.lift-set-tools { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
+.lift-set-tools .btn { min-height: 44px; }
+.lift-library-item, .lift-form .small, .lift-form .body { overflow-wrap: anywhere; }
+.lift-library-item summary { padding: 8px 0; }
+.lift-library-item ol { padding-left: 22px; }
+.lift-library-images figure.small { padding: 12px; background: var(--s2); border-radius: var(--r-m); }
+@media (max-width: 360px) { .lift-nav { gap: 4px; } .lift-nav .btn { padding-left: 8px; padding-right: 8px; } }
+@media (max-width: 360px) {
+  .lift-set, .lift-set-labels { grid-template-columns: 18px minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, .8fr) 44px; }
+}
+
+.lift-library-item summary { display: flex; align-items: center; gap: 12px; }
+.lift-thumb { width: 56px; height: 56px; flex: none; display: grid; place-items: center; background: var(--s2); border-radius: 10px; overflow: hidden; }
+.lift-thumb img { width: 100%; height: 100%; object-fit: contain; }

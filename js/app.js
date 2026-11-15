@@ -22,8 +22,8 @@ const TABS = [
   ["today", "Today", "today"],
   ["board", "Board", "board"],
   ["photos", "Photos", "photos"],
-  ["settings", "You", "settings"],
   ["lift", "Lift", "workout"],
+  ["settings", "You", "settings"],
 ];
 
 let main = null;

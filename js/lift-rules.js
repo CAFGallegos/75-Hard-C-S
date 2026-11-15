@@ -14,7 +14,7 @@ export function e1RM(weight, reps, rir = 0) {
   return Number.isFinite(weight) && weight > 0 && Number.isFinite(reps) && reps > 0 && Number.isFinite(rir) && rir >= 0
     ? clean(weight * (1 + (reps + rir) / 30)) : 0;
 }
-export const workingSets = (sets) => (sets ?? []).filter((s) => !s.is_warmup && s.completed !== false);
+export const workingSets = (sets) => (sets ?? []).filter((s) => !s.is_warmup && s.details?.kind !== 'drop' && s.completed !== false);
 export const volume = (sets) => clean(workingSets(sets).reduce((n, s) => n + s.weight * s.reps, 0));
 export function sessionMetrics(sets) {
   const work = workingSets(sets);

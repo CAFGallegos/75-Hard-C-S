@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {hydrateFocus,advanceFocus} from '../js/lift-focus.js';
+import {restSuggestion,roundRest} from '../js/lift-rest.js';
+import {activeWeekStreak,catalogUsage} from '../js/lift-analytics.js';
+const plan={default_rest_seconds:45};
+const a={name:'A',logged:[{weight:185,reps:6,rir:.5,completed:false}],details:{mechanic:'compound',rest_policy:'auto'},rep_max:6};
+const b={name:'B',logged:[{completed:false}],details:{}};const d={exercises:[a,b],plan,timer_end:12345};let id=0;hydrateFocus(d,()=>String(++id));
+assert.equal(restSuggestion(a,plan).seconds,180);assert.equal(restSuggestion(a,plan,a.logged[0]).seconds,180);
+a.logged[0].completed=true;assert.equal(restSuggestion(a,plan,a.logged[0]).seconds,210);
+a.logged[0].details={rir_qualifier:'at_least'};assert.equal(restSuggestion(a,plan,a.logged[0]).seconds,180);
+assert.equal(restSuggestion({...a,rest_seconds:0},plan).seconds,0);assert.equal(restSuggestion(b,plan).seconds,45);
+advanceFocus(d,0,0);assert.equal(d.focus.exercise_runtime_id,b.runtime_id);const restored=JSON.parse(JSON.stringify(d));hydrateFocus(restored);assert.equal(restored.timer_end,12345);assert.equal(restored.exercises[0].logged[0].weight,185);restored.exercises.reverse();assert.equal(hydrateFocus(restored),0);
+a.details.superset_group=b.details.superset_group='pair';b.rest_seconds=240;assert.equal(roundRest(d,0,0).seconds,240);
+const sessions=[{day:'2026-11-02',sets:[{details:{catalog_id:'a'}},{details:{catalog_id:'a'}}]},{day:'2026-11-09',sets:[{details:{catalog_id:'a'}}]}];assert.equal(activeWeekStreak(sessions,'2026-11-16'),2);assert.equal(activeWeekStreak(sessions,'2026-11-23'),0);assert.equal(catalogUsage(sessions).a,2);
+console.log('ok Focus identity/reload/reorder, preserved entries/timer, rest precedence/effort/qualifiers/groups, streak and usage deduplication');
