@@ -11,15 +11,18 @@ import { showWelcome } from "./views/welcome.js";
 import { checkShortcutReturn } from "./photo.js";
 import { syncPush } from "./push.js";
 import { openNudgeSheet } from "./nudges.js";
+import { renderLift } from "./views/lift.js";
+import { initLift } from "./lift-store.js";
 
 paintTheme();
 
 const app = document.getElementById("app");
-const VIEWS = { today: renderToday, board: renderBoard, photos: renderPhotos, settings: renderSettings };
+const VIEWS = { today: renderToday, board: renderBoard, photos: renderPhotos, settings: renderSettings, lift: renderLift };
 const TABS = [
   ["today", "Today", "today"],
   ["board", "Board", "board"],
   ["photos", "Photos", "photos"],
+  ["lift", "Lift", "workout"],
   ["settings", "You", "settings"],
 ];
 
@@ -148,6 +151,8 @@ async function boot() {
   }
   store.k = k;
   store.api = makeApi(k);
+  // Restore only this private link's local lifting draft/timer; no extra Today API call.
+  initLift().catch((err) => toast(err.message, { error: true }));
 
   // Paint instantly from the last known state, then refresh.
   const cached = store.cached();

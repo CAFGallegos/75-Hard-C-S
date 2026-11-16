@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { timerState, adjustedDeadline } from '../js/lift-timer.js';
+assert.deepEqual(timerState(121000,1000),{ expired:false,label:'Rest 2:00' });
+assert.equal(timerState(121000,120001).label,'Rest 0:01');
+assert.deepEqual(timerState(121000,121000),{ expired:true,label:'Rest complete · +0:00' });
+assert.equal(timerState(121000,186000).label,'Rest complete · +1:05');
+assert.equal(timerState(121000,7200000).expired,true,'suspended page catches up from deadline');
+assert.equal(adjustedDeadline(121000,15,1000),136000);
+assert.equal(adjustedDeadline(121000,-15,1000),106000);
+assert.equal(adjustedDeadline(121000,-15,120000),120000,'subtract cannot produce a past deadline');
+assert.equal(adjustedDeadline(1000,15,5000),20000,'adding after expiry starts a fresh extension');
+console.log('ok  timer countdown, exact zero, overtime, suspension and adjustments');

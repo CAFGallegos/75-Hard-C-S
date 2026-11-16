@@ -7,6 +7,7 @@ import { pushState, enablePush, disablePush } from "../push.js";
 import { REMINDERS, TOTAL } from "../rules.js";
 import { applyTheme, getTheme } from "../theme.js";
 import { openWidgetSetup } from "../widget-setup.js";
+import { renderLiftSettings } from "./lift.js";
 
 export function renderSettings(root) {
   const me = store.data.me;
@@ -121,8 +122,11 @@ export function renderSettings(root) {
         <button class="row" data-replay><span class="row-ico">${icon("refresh")}</span><span class="txt"><span class="t" style="display:block">Replay the welcome</span></span><span class="end">${icon("chevR")}</span></button>
       </div>
     </section>
+    <section class="section" data-lift-settings></section>
     <p class="foot-note">75 Hard · Sue v Carlos<br>¿Quién te Quiere?</p>
   </div>`;
+
+  renderLiftSettings($("[data-lift-settings]", root));
 
   root.addEventListener("click", async (ev) => {
     const t = ev.target.closest("[data-mode],[data-guide],[data-push-on],[data-push-off],[data-push-test],[data-theme-set],[data-copy],[data-replay],[data-penalty],[data-rem-on],[data-note-on],[data-nudges-on],[data-widget]");
