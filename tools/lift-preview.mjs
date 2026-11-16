@@ -1,7 +1,7 @@
 // Local-only sample API and static server. No outbound network calls.
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname } from 'node:path';
 import { validateLiftPlan, validateLiftSession, validateBackup } from '../supabase/functions/_shared/lift-schema.js';
@@ -84,10 +84,28 @@ export function mockCall(body) {
     default: throw new Error('preview_unsupported'); // Never forward unmocked actions.
   }
 }
+export function previewRoutineSource(source) {
+  // Never send the supplied personal numbers or source dates to a shared preview.
+  // Keep five-session navigation and load semantics, but use synthetic set values.
+  const synthetic=[['Push A','Sample press','barbell','external'],['Pull A','Sample pull-up','bodyweight','bodyweight'],['Legs','Sample leg press','machine','external'],['Push B','Sample added-load dip','bodyweight','added'],['Pull B','Sample cable row','cable','external']].map(([name,movement,equipment,load_type])=>({name,source:'SYNTHETIC SAMPLE ONLY',exercises:[{name:movement,equipment,load_type,values:[[load_type==='bodyweight'?0:20,10,'5+'],[load_type==='bodyweight'?0:25,8,1.5]]}]}));
+  return source.replace(/export const ROUTINE_FLAGS=\[[\s\S]*?\];/, 'export const ROUTINE_FLAGS=["SYNTHETIC SAMPLE: these values are invented for preview testing, never your real starting references."];')
+    .replace(/export const ROUTINE = \[[\s\S]*?\];(?=\s*export function startingRoutine)/,`export const ROUTINE = ${JSON.stringify(synthetic)};`);
+}
+function authorized(req) {
+  const password=process.env.LIFT_PREVIEW_PASSWORD;
+  if(!password)return true;
+  const actual=Buffer.from(req.headers.authorization??'');
+  const expected=Buffer.from('Basic '+Buffer.from('preview:'+password).toString('base64'));
+  return actual.length===expected.length&&timingSafeEqual(actual,expected);
+}
 export const previewCsp = "default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'none'; object-src 'none'; form-action 'self'; base-uri 'self'";
 export const server = createServer(async (req, res) => {
   res.setHeader('Content-Security-Policy', previewCsp);
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy','no-referrer');
+  res.setHeader('X-Content-Type-Options','nosniff');
+  res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');
+  if(!authorized(req)){res.setHeader('WWW-Authenticate','Basic realm="Temporary Lift sample", charset="UTF-8"');res.writeHead(401).end('Preview sign-in required.');return;}
   try {
     const path = new URL(req.url, 'http://localhost').pathname;
     if (path === '/__preview_api' && req.method === 'POST') {
@@ -100,16 +118,21 @@ export const server = createServer(async (req, res) => {
     if(path.startsWith('/__preview_media/') && req.method==='GET') {
       const media=decodeURIComponent(path.slice('/__preview_media/'.length));
       if(!/^[A-Za-z0-9_()'., -]+\/\d+\.jpg$/.test(media)){res.writeHead(404).end();return;}
-      try{const data=await readFile(resolve(root,'icons/exercises',media.replace(/\/(\d+)\.jpg$/,'-$1.jpg')));res.setHeader('Content-Type','image/jpeg');res.end(data);}catch{res.writeHead(404).end();}return;
+      try{const file=await realpath(resolve(root,'icons/exercises',media.replace(/\/(\d+)\.jpg$/,'-$1.jpg')));if(!file.startsWith(resolve(root,'icons/exercises')+'/'))throw new Error('not_found');const data=await readFile(file);res.setHeader('Content-Type','image/jpeg');res.end(data);}catch{res.writeHead(404).end();}return;
     }
     if (req.method !== 'GET' || !/^\/(?:$|supabase\/functions\/_shared\/lift-schema\.js$|index\.html$|manifest\.webmanifest$|(?:js|css|fonts|icons)\/)/.test(path)) { res.writeHead(404).end(); return; }
-    const file = resolve(root, `.${path === '/' ? '/index.html' : decodeURIComponent(path)}`);
+    const decoded=decodeURIComponent(path);
+    if(decoded.split('/').some(x=>x==='.'||x==='..'||x.startsWith('.'))||decoded.includes('\\')){res.writeHead(404).end();return;}
+    const file = await realpath(resolve(root, `.${path === '/' ? '/index.html' : decoded}`));
+    const allowed=/^\/(?:index\.html|manifest\.webmanifest|supabase\/functions\/_shared\/lift-schema\.js|js\/(?:[a-z0-9-]+\.js|exercise-(?:catalog(?:\.source)?|data)\.json)|js\/views\/[a-z0-9-]+\.js|css\/app\.css|fonts\/[a-z0-9-]+\.woff2|icons\/[a-z0-9-]+\.png|icons\/exercises\/(?:[A-Za-z0-9_()-]+\.jpg|SOURCE\.md|LICENSE\.txt))$/;
+    if(!allowed.test(path==='/'?'/index.html':decoded)){res.writeHead(404).end();return;}
     if (!file.startsWith(root) || /(?:^|\/)\./.test(path.slice(1))) { res.writeHead(404).end(); return; }
     let content = await readFile(file);
+    if (path === '/js/lift-routine.js') content=previewRoutineSource(content.toString());
     if (path === '/js/config.js') content = 'export const API_URL = "/__preview_api"; export const SHORTCUT_NAME = "Sample preview only";';
     if (path === '/js/lift-catalog.js') content=content.toString().replace(/export const MEDIA_BASE=.*?;/, 'export const MEDIA_BASE="/__preview_media/";');
     if (path === '/js/app.js') content = content.toString().replace('navigator.serviceWorker.register("sw.js").catch(() => {});', '/* Service worker disabled in local sample preview. */');
-    if (path === '/' || path === '/index.html') content = content.toString().replace('<title>75 Hard</title>', '<title>Lift · SAMPLE PREVIEW</title>').replace('<div id="app"', '<div class="lift-notice" role="note" style="margin:12px">SAMPLE PREVIEW · Mock API · Changes stay local to this preview. <a href="/?k=sample-a&amp;tab=lift">Sample Alex</a> · <a href="/?k=sample-b&amp;tab=lift">Sample Sam</a></div><div id="app"').replace('</body>', '<script>if (!new URL(location.href).searchParams.has("k")) location.replace("/?k=sample-a&tab=lift");</script></body>');
+    if (path === '/' || path === '/index.html') content = content.toString().replace('<title>75 Hard</title>', '<title>Lift · SAMPLE PREVIEW</title>').replace('<div id="app"', '<div class="lift-notice" role="note" style="margin:12px">SAMPLE PREVIEW · Synthetic data only · Mock API · Do not import real backups or enter real workout data. <a href="/?k=sample-a&amp;tab=lift">Sample Alex</a> · <a href="/?k=sample-b&amp;tab=lift">Sample Sam</a></div><div id="app"').replace('</body>', '<script>if (!new URL(location.href).searchParams.has("k")) location.replace("/?k=sample-a&tab=lift");</script></body>');
     const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2' };
     res.setHeader('Content-Type', types[extname(file)] ?? 'application/octet-stream'); res.end(content);
   } catch { res.writeHead(404).end(); }

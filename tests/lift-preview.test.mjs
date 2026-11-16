@@ -70,3 +70,17 @@ assert.deepEqual(call('lift_backup_export').plan,carlosBeforeSue.plan,'Sue canno
 assert.deepEqual(call('lift_backup_export').sessions,carlosBeforeSue.sessions);
 assert.throws(()=>routine.startingRoutine(sueAfter.plan,()=>crypto.randomUUID(),'sue',routineCatalog),/already/);
 console.log('ok  Explicit Sue template loading is separate, repeat-safe and preserves both profiles’ history');
+
+// Shared phone-preview routes must never expose real starting numbers or arbitrary files.
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+try{
+ const base=`http://127.0.0.1:${server.address().port}`;
+ const source=await(await fetch(base+'/js/lift-routine.js')).text();
+ assert.match(source,/SYNTHETIC SAMPLE ONLY/);assert.ok(!source.includes('[[185,6,1]'));assert.ok(!source.includes('June 28'));
+ for(const path of ['/README.md','/CLAUDE.md','/js/%2e%2e%2fREADME.md','/js/%2e%2e%2f.git/config','/supabase/functions/api/index.ts','/tools/lift-preview.mjs'])assert.equal((await fetch(base+path)).status,404,path);
+ process.env.LIFT_PREVIEW_PASSWORD='test-only-auth-password';
+ assert.equal((await fetch(base+'/')).status,401);assert.equal((await fetch(base+'/js/config.js')).status,401);
+ assert.equal((await fetch(base+'/__preview_api',{method:'POST',body:'{}'})).status,401);
+ assert.equal((await fetch(base+'/',{headers:{authorization:'Basic '+Buffer.from('preview:test-only-auth-password').toString('base64')}})).status,200);
+ console.log('ok Shared preview auth, synthetic routine source and encoded traversal/file restrictions');
+}finally{delete process.env.LIFT_PREVIEW_PASSWORD;await new Promise(resolve=>server.close(resolve));}

@@ -1,5 +1,5 @@
--- NOT APPLIED. Carlos applies this before deploying api, then publishing the PWA.
--- No seed: the supplied split is still "PASTE SPLIT HERE".
+-- Applied to personal 75-hard as version 20261116081556 on 2026-11-16.
+-- Creates empty private Lift storage; current starting references are loaded only by explicit user choice.
 begin;
 create table public.lift_plans (
   person_id text primary key references public.people(id) on delete cascade,
