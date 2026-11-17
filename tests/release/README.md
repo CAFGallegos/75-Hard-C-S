@@ -16,3 +16,16 @@ DENO_DIR=/tmp/lift-release-tools/deno-cache /tmp/lift-release-tools/node_modules
 ```
 
 These checks do not verify physical iPhone behavior, live database/API isolation, Supabase-specific infrastructure or production credentials. Existing 16 local suites also remain required.
+
+## Active-workout visual polish
+
+Run `node tests/release/lift-visuals-browser.test.mjs` with the same external Playwright/Chromium tools. This opens actual mobile-emulated Chromium at 320, 375 and 390px, in both themes and for both synthetic profiles. It verifies illustration labels, rendered local photos, missing/error/offline fallbacks, strip selection/reveal/completion, fractional and qualified RIR, entered values/notes, reload, timer continuity, overview navigation, pause/resume, reachable editing controls, keyboard focus order, reduced viewport and timer/navigation/Finish geometry. Illustration selection and reset are exercised without changing exercise snapshots. All external requests are rejected. Screenshots go to `/tmp/lift-polish-after`; these are sample data only. `LIFT_VISUAL_WIDTHS=390` can narrow an investigative rerun; full verification uses all three widths.
+
+The image-failure test reloads after intercepting photos: removing/reinserting an already decoded image can reuse the browser's image cache, so that alone does not simulate a failed network request. Mobile screenshots used during interaction are viewport captures; full-page mobile capture changes the emulated viewport in Chromium and is reserved for the end of each context.
+
+`node tools/lift-polish-preview.mjs` starts the same restricted mock server on **127.0.0.1:4182**, with full sample rotations preloaded. Open `/?k=sample-a&tab=lift` for Carlos-style sample references or `/?k=sample-b&tab=lift` for Sue's blank-load sample template. It uses synthetic profiles, invented loads, the existing API mock/CSP/path restrictions and disabled service workers. The two keys are public sample selectors, not production credentials. Use a clean browser context or clear this local origin's storage to reset an older sample draft. Stop a terminal-launched preview with Ctrl+C.
+
+The 74 bundled photos (56 existing plus 18 added) are available in this strictly local preview. Other pinned catalog images intentionally show their failure placeholder rather than accessing external media. No dependencies or backend changes were added. These tests do not establish physical-iPhone keyboard/lock-screen behavior, installed-PWA/offline shell behavior, or live database/API behavior.
+
+
+`node tests/release/lift-muscles-browser.test.mjs` verifies automatically selected male/Carlos and female/Sue front/back SVGs at 320/375/390px in both themes. It confirms primary targets, decoded additional local photos, no appearance selector, no external requests/page errors and no overflow. Screenshots: `/tmp/lift-muscle-preview/`. Run `node tests/lift-muscles.test.mjs` for data/path/media-ID validation. Source/license: `icons/muscles/SOURCE.md` and `LICENSE.txt`; no React dependency is installed.
