@@ -23,7 +23,7 @@ function sample(key) {
     const finished = new Date(Date.now() - (i + 1) * 86400000);
     return { id: id((person === 'los' ? 100 : 200) + i), lift_day_id: days[0].id, day: finished.toISOString().slice(0, 10), day_name: days[0].name, units: 'lb', notes: 'Sample workout history', started_at: new Date(+finished - 3600000).toISOString(), finished_at: finished.toISOString(), sets: [1, 2, 3].map((set_no) => ({ exercise_id: exercise.id, exercise_name: exercise.name, exercise_notes: '', set_no, is_warmup: false, weight: Math.max(45, 135 - i * 5), reps: 12, rir: 2, details: exercise.details })) };
   });
-  const data = { known_days:new Set(days.map(d=>d.id)), challenge: { start_date: today(), miss_penalty: 1, people, me: { ...people.find((p) => p.id === person), onboarded: true, photo_mode: 'manual', photo_count: 0, push_devices: 0, reminders: {} }, nudges: { partner_on: false, remaining: 3 } }, plan, days, sessions, catalog: [{ id: exercise.id, name: exercise.name, archived: false }] };
+  const data = { known_days:new Set(days.map(d=>d.id)), challenge: { start_date: today(), miss_penalty: 1, people, me: { ...people.find((p) => p.id === person), onboarded: true, photo_mode: 'checkbox', photo_count: 0, push_devices: 0, reminders: {} }, nudges: { partner_on: false, remaining: 3 } }, plan, days, sessions, catalog: [{ id: exercise.id, name: exercise.name, archived: false }] };
   samples.set(key, data); return data;
 }
 function state(s) {
@@ -124,7 +124,7 @@ export const server = createServer(async (req, res) => {
     const decoded=decodeURIComponent(path);
     if(decoded.split('/').some(x=>x==='.'||x==='..'||x.startsWith('.'))||decoded.includes('\\')){res.writeHead(404).end();return;}
     const file = await realpath(resolve(root, `.${path === '/' ? '/index.html' : decoded}`));
-    const allowed=/^\/(?:index\.html|manifest\.webmanifest|supabase\/functions\/_shared\/lift-schema\.js|js\/(?:[a-z0-9-]+\.js|exercise-(?:catalog(?:\.source)?|data)\.json)|js\/views\/[a-z0-9-]+\.js|css\/app\.css|fonts\/[a-z0-9-]+\.woff2|icons\/[a-z0-9-]+\.png|icons\/exercises\/(?:[A-Za-z0-9_()-]+\.jpg|SOURCE\.md|LICENSE\.txt))$/;
+    const allowed=/^\/(?:index\.html|manifest\.webmanifest|supabase\/functions\/_shared\/lift-schema\.js|js\/(?:[a-z0-9-]+\.js|(?:exercise-(?:catalog(?:\.source)?|data)|muscle-paths|lift-media)\.json)|js\/views\/[a-z0-9-]+\.js|css\/app\.css|fonts\/[a-z0-9-]+\.woff2|icons\/[a-z0-9-]+\.png|icons\/exercises\/(?:[A-Za-z0-9_()-]+\.jpg|SOURCE\.md|LICENSE\.txt))$/;
     if(!allowed.test(path==='/'?'/index.html':decoded)){res.writeHead(404).end();return;}
     if (!file.startsWith(root) || /(?:^|\/)\./.test(path.slice(1))) { res.writeHead(404).end(); return; }
     let content = await readFile(file);
