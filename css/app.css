@@ -1163,3 +1163,6 @@ body.lift-keyboard .sheet:has(.lift-field) {
 .lift-workout-preview > .lift-exercise-head .h2 { flex:1; min-width:0; overflow-wrap:anywhere; }
 .lift-preview-exercise > summary::after { content:'+'; color:var(--me-ink); font-size:22px; flex-shrink:0; }
 .lift-preview-exercise[open] > summary::after { content:'−'; }
+
+/* Guided plan editing uses existing theme tokens and touch spacing. */
+.lift-muscle-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.lift-muscle-options label,.lift-muscle-photo-filter{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px}.lift-muscle-options input{flex-shrink:0}.lift-form fieldset{min-width:0;border:1px solid var(--line);border-radius:12px;margin:12px 0;padding:10px}
