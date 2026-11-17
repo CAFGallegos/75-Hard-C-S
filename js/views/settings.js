@@ -1,3 +1,4 @@
+import {mountWeightSettings} from '../weight-view.js';
 import { store } from "../store.js";
 import { icon } from "../icons.js";
 import { $, $$, esc, haptic, toast, confirmSheet, fmtShort, isStandalone, isIOS } from "../util.js";
@@ -47,6 +48,8 @@ export function renderSettings(root) {
       ${me.photo_mode === "album" ? `<button class="btn btn-ghost btn-block" style="margin-top:10px" data-guide>${icon("bolt")}Shortcut setup guide</button>` : ""}
       <div class="privacy" style="margin-top:10px">${icon("lock")}<span>Only you can see your photos. ${esc(store.partner.name)} only sees that it's done.</span></div>
     </section>
+
+    <section class="section" data-weight-settings></section>
 
     <section class="section">
       <span class="eyebrow">Reminders</span>
@@ -127,6 +130,7 @@ export function renderSettings(root) {
   </div>`;
 
   renderLiftSettings($("[data-lift-settings]", root));
+  mountWeightSettings($("[data-weight-settings]", root));
 
   root.addEventListener("click", async (ev) => {
     const t = ev.target.closest("[data-mode],[data-guide],[data-push-on],[data-push-off],[data-push-test],[data-theme-set],[data-copy],[data-replay],[data-penalty],[data-rem-on],[data-note-on],[data-nudges-on],[data-widget]");

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {weightIn,validateWeighIn,weightNamespace,readWeights,writeWeight,removeWeight,weightSummary,weightsCsv,weightSettings,saveWeightSettings} from '../js/weight-tracker.js';
+const data=new Map();const storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
+const a=await weightNamespace('synthetic-a'),b=await weightNamespace('synthetic-b');assert.notEqual(a,b);assert.ok(!a.includes('synthetic-a'));
+assert.deepEqual(weightSettings(storage,a),{enabled:false,units:'lb'});saveWeightSettings(storage,a,{enabled:true,units:'kg'});assert.equal(weightSettings(storage,b).enabled,false);
+const today='2026-11-17';writeWeight(storage,a,{day:today,weight:70,units:'kg'},today);writeWeight(storage,a,{day:'2026-11-16',weight:154.32358353,units:'lb'},today);
+assert.equal(readWeights(storage,a).length,2);assert.deepEqual(readWeights(storage,b),[]);assert.ok(Math.abs(weightSummary(readWeights(storage,a),'kg').change)<0.000001);
+writeWeight(storage,a,{day:today,weight:69.5,units:'kg'},today);assert.equal(readWeights(storage,a).length,2);assert.equal(weightSummary(readWeights(storage,a),'lb').latest,weightIn(69.5,'kg','lb'));
+saveWeightSettings(storage,a,{enabled:false,units:'kg'});assert.equal(readWeights(storage,a).length,2,'disable preserves history');
+assert.match(weightsCsv(readWeights(storage,a)),/^date,weight,unit\r\n2026-11-16/);
+const snapshot=JSON.stringify([...data]);for(const entry of [{day:'2026-02-30',weight:70,units:'kg'},{day:'2026-11-18',weight:70,units:'kg'},{day:today,weight:0,units:'lb'},{day:today,weight:NaN,units:'lb'},{day:today,weight:Infinity,units:'kg'},{day:today,weight:651,units:'kg'},{day:today,weight:70,units:'other'}])assert.throws(()=>writeWeight(storage,a,entry,today));assert.equal(JSON.stringify([...data]),snapshot,'invalid writes preserve saved data');
+removeWeight(storage,a,today);assert.equal(readWeights(storage,a).length,1);assert.deepEqual(readWeights(storage,b),[]);
+assert.throws(()=>writeWeight({...storage,setItem(){throw Error('quota');}},a,{day:today,weight:70,units:'kg'},today),/quota/);assert.equal(readWeights(storage,a).length,1);
+data.set(a+':bodyweight-v1','broken');assert.throws(()=>readWeights(storage,a),/could not be read/);assert.throws(()=>writeWeight(storage,a,{day:today,weight:70,units:'kg'},today));assert.equal(data.get(a+':bodyweight-v1'),'broken');
+assert.throws(()=>validateWeighIn({day:'=formula',weight:70,units:'kg'}));
+console.log('ok Optional weight settings, private namespaces, dates, mixed units, updates, deletion, CSV, corrupt/quota preservation');
