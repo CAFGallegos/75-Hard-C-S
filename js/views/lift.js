@@ -1,11 +1,11 @@
 import {paintMuscles} from '../lift-muscles.js';
-import {paintWorkoutImages,revealCurrentTile} from '../lift-visuals.js';
+import {paintWorkoutImages,revealCurrentTile,resolveIllustration} from '../lift-visuals.js';
 import {hydrateFocus,advanceFocus} from '../lift-focus.js';
 import {restSuggestion,roundRest} from '../lift-rest.js';
 import { openRoutine, openGenerator, openPrograms, openBackup, renderAnalytics } from '../lift-programs.js';
 import { exerciseDraft, loadType, loadLabel, rirText, restEligible, togglePause, elapsedSeconds, safeMetrics, adjustment, EQUIPMENT } from '../lift-domain.js';
 import { catalogExercise, loadCatalog, filterCatalog } from '../lift-catalog.js';
-import { replacementCandidates } from '../lift-generator.js';
+import { replacementCandidates, MUSCLES } from '../lift-generator.js';
 import { routineIdFor } from '../lift-routine.js';
 import { mountLibrary, showLibrary, showReference } from '../lift-library.js';
 import { store } from '../store.js';
@@ -93,12 +93,17 @@ function startWorkout(root,selected) {
 }
 function openWorkoutPreview(root,day) {
   const plan=lift.state.plan;
-  const panel=sheet(`<div class="lift-form lift-workout-preview"><div class="lift-preview-top"><span class="eyebrow">Workout preview</span><button type="button" class="btn btn-line" data-close-preview-top aria-label="Close workout preview">&times;</button></div><div class="lift-exercise-head"><h2 class="h2">${esc(day.name)}</h2><div data-preview-muscles></div></div><p class="small">${day.exercises.length} exercises · ${day.exercises.reduce((sum,e)=>sum+e.sets,0)} working sets · ${esc(plan.units)}</p><button class="btn btn-me btn-block" data-start-preview ${day.exercises.length?'':'disabled'}>Start workout</button><div class="lift-preview-list">${day.exercises.map((e,i)=>`<details class="lift-preview-exercise"><summary><span class="lift-photo-thumb" data-workout-image="${i}">${icon('workout')}</span><span><strong>${esc(e.name)}</strong><span class="small">${e.sets} × ${e.rep_min}–${e.rep_max} reps · ${e.target_rir} RIR</span></span></summary><p class="small">${esc(e.equipment)} · ${esc(loadLabel(loadType(e),plan.units))}</p><p class="small">Rest ${restSuggestion(e,plan).seconds}s · ${esc(restSuggestion(e,plan).source)}</p>${(e.details?.references??[]).length?'<p class="small">Starting references · editable when you start</p>'+e.details.references.map(r=>`<p class="small">${r.weight??'Unset'} ${esc(r.units)} × ${r.reps} @ ${rirText(r)} RIR</p>`).join(''):''}${e.notes?`<p class="small">${esc(e.notes)}</p>`:''}<button class="btn btn-line" data-preview-reference="${i}">Exercise reference</button></details>`).join('')}</div><button class="btn btn-line btn-block" data-close-preview>Close preview</button></div>`);
+  const panel=sheet(`<div class="lift-form lift-workout-preview"><div class="lift-preview-top"><span class="eyebrow">Workout preview</span><button type="button" class="btn btn-line" data-close-preview-top aria-label="Close workout preview">&times;</button></div><div class="lift-exercise-head"><h2 class="h2">${esc(day.name)}</h2><div data-preview-muscles></div></div><p class="small">${day.exercises.length} exercises · ${day.exercises.reduce((sum,e)=>sum+e.sets,0)} working sets · ${esc(plan.units)}</p><button class="btn btn-me btn-block" data-start-preview ${day.exercises.length?'':'disabled'}>Start workout</button><div class="lift-preview-list">${day.exercises.map((e,i)=>`<details class="lift-preview-exercise"><summary><span class="lift-photo-thumb" data-workout-image="${i}">${icon('workout')}</span><span><strong>${esc(e.name)}</strong><span class="small">${e.sets} × ${e.rep_min}–${e.rep_max} reps · ${e.target_rir} RIR</span></span></summary><p class="small">${esc(e.equipment)} · ${esc(loadLabel(loadType(e),plan.units))}</p><p class="small">Rest ${restSuggestion(e,plan).seconds}s · ${esc(restSuggestion(e,plan).source)}</p>${(e.details?.references??[]).length?'<p class="small">Starting references · editable when you start</p>'+e.details.references.map(r=>`<p class="small">${r.weight??'Unset'} ${esc(r.units)} × ${r.reps} @ ${rirText(r)} RIR</p>`).join(''):''}${e.notes?`<p class="small">${esc(e.notes)}</p>`:''}<button class="btn btn-line" data-preview-reference="${i}">Exercise reference</button><button class="btn btn-line" data-guide-preview="${i}">Edit muscles / replace exercise</button></details>`).join('')}</div><button class="btn btn-line btn-block" data-close-preview>Close preview</button></div>`);
   paintMuscles(panel.el.querySelector('[data-preview-muscles]'),day.exercises);
   paintWorkoutImages(panel.el,day.exercises);
   panel.el.querySelector('[data-close-preview]').onclick=()=>panel.close();
   panel.el.querySelector('[data-close-preview-top]').onclick=()=>panel.close();
   panel.el.querySelector('[data-start-preview]').onclick=()=>{panel.close();startWorkout(root,day);};
+  panel.el.querySelectorAll('[data-guide-preview]').forEach(b=>b.onclick=()=>{
+    const p=editablePlan(),di=p.days.findIndex(d=>d.id===day.id),ei=p.days[di]?.exercises.findIndex(e=>e.id===day.exercises[Number(b.dataset.guidePreview)].id);
+    if(di<0||ei<0)return toast('This plan changed. Reopen its editor.',{error:true});
+    panel.close();screen='plan';paint(root);guidedExercise(root,di,ei);
+  });
   panel.el.querySelectorAll('[data-preview-reference]').forEach(b=>b.onclick=()=>showReference(day.exercises[Number(b.dataset.previewReference)]));
 }
 
@@ -269,7 +274,7 @@ function renderPlan(root) {
     ${p.days.map((d, di) => `<section class="card card-pad lift-exercise"><div class="lift-exercise-head"><h2 class="h2">${esc(d.name)}</h2>${button('Rename', `data-day-edit="${di}"`)}</div>
       <div class="lift-actions">${button('↑', `data-day-move="${di}:-1" aria-label="Move ${esc(d.name)} up" ${di === 0 ? 'disabled' : ''}`)}${button('↓', `data-day-move="${di}:1" aria-label="Move ${esc(d.name)} down" ${di === p.days.length - 1 ? 'disabled' : ''}`)}${button('Delete day', `data-day-delete="${di}"`, 'btn-ghost')}</div>
       ${d.exercises.map((e, ei) => `<div class="lift-plan-exercise"><h3 class="h3">${esc(e.name)}</h3><p class="small">${e.sets} × ${e.rep_min}–${e.rep_max} · ${e.target_rir} RIR · ${esc(e.equipment)} · +${n(e.increment)} ${p.units}</p><div class="lift-actions">
-        ${button('Edit', `data-ex-edit="${di}:${ei}"`)}${button('Swap', `data-ex-swap="${di}:${ei}"`)}${button('↑', `data-ex-move="${di}:${ei}:-1" aria-label="Move ${esc(e.name)} up" ${ei === 0 ? 'disabled' : ''}`)}${button('↓', `data-ex-move="${di}:${ei}:1" aria-label="Move ${esc(e.name)} down" ${ei === d.exercises.length - 1 ? 'disabled' : ''}`)}${button('Delete', `data-ex-delete="${di}:${ei}"`, 'btn-ghost')}</div></div>`).join('')}
+        ${button('Edit', `data-ex-edit="${di}:${ei}"`)}${button('Muscles / similar', `data-ex-guide="${di}:${ei}"`)}${button('Swap', `data-ex-swap="${di}:${ei}"`)}${button('↑', `data-ex-move="${di}:${ei}:-1" aria-label="Move ${esc(e.name)} up" ${ei === 0 ? 'disabled' : ''}`)}${button('↓', `data-ex-move="${di}:${ei}:1" aria-label="Move ${esc(e.name)} down" ${ei === d.exercises.length - 1 ? 'disabled' : ''}`)}${button('Delete', `data-ex-delete="${di}:${ei}"`, 'btn-ghost')}</div></div>`).join('')}
       ${button('Add exercise', `data-ex-add="${di}"`, 'btn-me btn-block')}</section>`).join('')}`;
   content.onclick = async (ev) => {
     const b = ev.target.closest('button'); if (!b) return;
@@ -286,6 +291,7 @@ function renderPlan(root) {
       if (b.dataset.dayDelete !== undefined && await confirmSheet({ title: 'Delete this day?', body: 'Your logged workouts stay in History.', ok: 'Delete', danger: true })) { p.days.splice(Number(b.dataset.dayDelete), 1); keepEdit(); renderPlan(root); }
       if (b.dataset.exAdd !== undefined) editExercise(root, Number(b.dataset.exAdd), null, false);
       if (b.dataset.exEdit) { const [di, ei] = b.dataset.exEdit.split(':').map(Number); editExercise(root, di, ei, false); }
+      if (b.dataset.exGuide) { const [di,ei]=b.dataset.exGuide.split(':').map(Number); guidedExercise(root,di,ei); }
       if (b.dataset.exSwap) { const [di, ei] = b.dataset.exSwap.split(':').map(Number); editExercise(root, di, ei, true); }
       if (b.dataset.exMove) { const [di, ei, by] = b.dataset.exMove.split(':').map(Number), a = p.days[di].exercises; [a[ei], a[ei + by]] = [a[ei + by], a[ei]]; keepEdit(); renderPlan(root); }
       if (b.dataset.exDelete && await confirmSheet({ title: 'Delete this exercise?', body: 'Its workout history will still be available.', ok: 'Delete', danger: true })) { const [di, ei] = b.dataset.exDelete.split(':').map(Number); p.days[di].exercises.splice(ei, 1); keepEdit(); renderPlan(root); }
@@ -298,6 +304,49 @@ function renderPlan(root) {
     } catch (err) { b.disabled = false; toast(liftError(err), { error: true, ms: 7000 }); }
   };
 }
+async function guidedExercise(root,di,ei) {
+  const p=editablePlan(),e=p.days[di].exercises[ei];
+  const panel=sheet('<div class="lift-form"><h2 class="h2">Muscles &amp; similar exercises</h2><div data-guide-body>Loading library…</div><button class="btn btn-line btn-block" data-guide-close>Cancel</button></div>');
+  $('[data-guide-close]',panel.el).onclick=()=>panel.close();
+  try {
+    const [catalog,localMedia]=await Promise.all([loadCatalog(),Promise.all(['exercise-data.json','lift-media.json'].map(name=>fetch(new URL('../'+name,import.meta.url)).then(r=>{if(!r.ok)throw Error('Photo list unavailable');return r.json();}))).then(rows=>rows.flat())]);if(!panel.el.isConnected)return;
+    const localPhotoIds=new Set(localMedia.filter(x=>x.images?.length).map(x=>x.id));
+    const match=resolveIllustration(e,catalog),row=['confirmed','matched'].includes(match.kind)?match.row:null;
+    const primary=new Set(e.details?.primaryMuscles??row?.primaryMuscles??[]),secondary=new Set(e.details?.secondaryMuscles??row?.secondaryMuscles??[]);
+    const muscles=[...new Set([...MUSCLES,...catalog.flatMap(x=>[...x.primaryMuscles,...x.secondaryMuscles])])].sort();
+    const host=$('[data-guide-body]',panel.el);
+    host.innerHTML=`<h3 class="h3">${esc(e.name)}</h3><p class="small">Choose the muscles you intend to train. Similar muscles do not guarantee the same technique or suitability. Changes stay in your plan draft until Save plan; active workouts and History stay unchanged.</p><details open><summary>Target muscles</summary>${['Primary','Secondary'].map(kind=>`<fieldset><legend>${kind}</legend><div class="lift-muscle-options">${muscles.map(m=>`<label><input type="checkbox" data-muscle-kind="${kind}" value="${esc(m)}" ${(kind==='Primary'?primary:secondary).has(m)?'checked':''}> ${esc(m)}</label>`).join('')}</div></fieldset>`).join('')}</details><label class="lift-field"><span>Instructions / notes</span><textarea data-guide-notes maxlength="1000">${esc(e.notes??'')}</textarea></label><button class="btn btn-line btn-block" data-keep-custom>Keep as custom exercise</button><label class="lift-field"><span>Replacement equipment</span><select data-guide-equipment><option value="">All equipment</option>${EQUIPMENT.map(x=>`<option>${esc(x)}</option>`).join('')}</select></label><label class="lift-muscle-photo-filter"><input type="checkbox" data-guide-photos checked> Only exercises with included photos</label><div data-guide-results></div>`;
+    const targets=()=>{const read=k=>[...host.querySelectorAll(`[data-muscle-kind="${k}"]:checked`)].map(x=>x.value);const a=read('Primary');return {primaryMuscles:a,secondaryMuscles:read('Secondary').filter(x=>!a.includes(x))};};
+    const finish=()=>{keepEdit();panel.close();renderPlan(root);toast('Change kept in draft. Save plan to apply.');};
+    $('[data-keep-custom]',host).onclick=()=>{
+      const t=targets();if(!t.primaryMuscles.length)return toast('Select at least one primary muscle.',{error:true});
+      const id=e.details?.catalog_id?.startsWith('custom-')?e.details.catalog_id:(p.details?.custom??[]).find(x=>x.name===e.name&&x.equipment===e.equipment)?.id??'custom-'+crypto.randomUUID();
+      const notes=$('[data-guide-notes]',host).value;
+      const custom={id,name:e.name,equipment:e.equipment,...t,instructions:notes?[notes]:[],images:[],category:'strength',level:null};
+      const existing=p.details?.custom??[];if(existing.length>=1000&&!existing.some(x=>x.id===id))return toast('Custom library is full.',{error:true});
+      p.details={...p.details,custom:[...existing.filter(x=>x.id!==id),custom]};
+      e.details={...e.details,...t};
+      // Keep a confirmed photo identity when only editing targets; unmatched entries become custom.
+      if(!row)e.details={...e.details,catalog_id:id,source:'custom',source_revision:null};
+      e.notes=notes;finish();
+    };
+    const refresh=()=>{
+      const t=targets(),equipment=$('[data-guide-equipment]',host).value;
+      const pool=catalog.filter(x=>!$('[data-guide-photos]',host).checked||localPhotoIds.has(x.id));
+      const candidates=replacementCandidates({...e,details:{...e.details,catalog_id:e.details?.catalog_id??row?.id,...t}},pool,{...p.details?.preferences,equipment:equipment?[equipment]:EQUIPMENT});
+      const results=$('[data-guide-results]',host);
+      results.innerHTML=!t.primaryMuscles.length?'<p class="small">Select primary muscles to find similar exercises.</p>':!candidates.length?'<p class="small">No matching exercises. Try another equipment filter or turn off the photo filter. You can keep your own movement above.</p>':candidates.map((x,i)=>`<section class="card card-pad"><div class="lift-exercise-head"><span class="lift-photo-thumb" data-workout-image="${i}"></span><h3 class="h3">${esc(x.exercise.name)}</h3></div><p class="small">${esc(x.reason)} Secondary: ${esc(x.exercise.secondaryMuscles.join(', ')||'none listed')}.</p><details><summary>Technique &amp; equipment</summary><p class="small">${esc(x.exercise.equipment??'unspecified')}</p><ol>${x.exercise.instructions.map(t=>`<li>${esc(t)}</li>`).join('')}</ol></details><button class="btn btn-me btn-block" data-guided-replace="${i}">Replace with this exercise</button></section>`).join('');
+      paintWorkoutImages(results,candidates.map(x=>catalogExercise(x.exercise,p.units)));
+      results.querySelectorAll('[data-guided-replace]').forEach(b=>b.onclick=async()=>{
+        const selected=candidates[Number(b.dataset.guidedReplace)].exercise;
+        if(!await confirmSheet({title:'Replace '+e.name+'?',body:'Use '+selected.name+' in this plan. Previous history stays intact. Starting weights and references will not transfer. Review the new default sets, reps and RIR before saving.',ok:'Replace exercise'}))return;
+        p.days[di].exercises[ei]=catalogExercise(selected,p.units);finish();
+      });
+    };
+    host.querySelectorAll('input,select').forEach(el=>el.onchange=refresh);refresh();
+  }catch(err){$('[data-guide-body]',panel.el).textContent='Library unavailable. Your plan is unchanged. '+err.message;}
+}
+
 function editExercise(root, di, ei, swap) {
   const p = lift.edit, day = p.days[di];
   if (ei === null && day.exercises.length >= 30) return toast('Up to 30 exercises per day.');

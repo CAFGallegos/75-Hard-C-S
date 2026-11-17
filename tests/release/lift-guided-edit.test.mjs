@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {server} from '../../tools/lift-preview.mjs';
+import {seedVisualPreview} from '../../tools/lift-polish-preview.mjs';
+const {chromium}=await import('/tmp/lift-release-tools/node_modules/playwright/index.mjs');
+await seedVisualPreview();await new Promise(r=>server.listen(0,'127.0.0.1',r));
+const base=`http://127.0.0.1:${server.address().port}`;
+const browser=await chromium.launch({executablePath:'/home/flogal_dev/.cache/ms-playwright/chromium-1252/chrome-linux64/chrome',args:['--no-sandbox']});
+await mkdir('/tmp/lift-guided-edit',{recursive:true});
+try{for(const width of [320,390])for(const theme of ['light','dark'])for(const key of ['sample-a','sample-b']){
+ const ctx=await browser.newContext({viewport:{width,height:844}});await ctx.addInitScript(t=>localStorage.setItem('theme75',t),theme);
+ const page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(base+`/?k=${key}&tab=lift`);
+ await page.locator('[data-preview-workout]').first().click();await page.locator('.lift-preview-exercise summary').first().click();
+ await page.locator('[data-guide-preview]').first().click();await page.locator('[data-keep-custom]').waitFor();
+ const before=await page.evaluate(async()=>{const {lift}=await import('/js/lift-store.js');return structuredClone(lift.edit.days[0].exercises[0]);});
+ for(const box of await page.locator('[data-muscle-kind="Primary"]:checked').all())await box.uncheck();await page.locator('[data-muscle-kind="Primary"][value="chest"]').check();
+ await page.locator('[data-guide-notes]').fill('Synthetic custom technique notes');
+ await page.locator('[data-guide-body] > details > summary').click();await page.locator('[data-guide-body] h3').first().scrollIntoViewIfNeeded();
+ await page.screenshot({path:`/tmp/lift-guided-edit/${key}-${width}-${theme}.png`,fullPage:false});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ await page.locator('[data-keep-custom]').click();
+ let edit=await page.evaluate(async()=> (await import('/js/lift-store.js')).lift.edit);
+ assert.equal(edit.days[0].exercises[0].id,before.id);assert.deepEqual(edit.days[0].exercises[0].details.references,before.details.references);
+ assert.deepEqual(edit.days[0].exercises[0].details.primaryMuscles,['chest']);assert.ok(edit.details.custom.some(x=>x.instructions.includes('Synthetic custom technique notes')));
+ await page.reload();await page.locator("[data-tab=lift]").click();await page.locator('[data-screen="plan"]').click();
+ await page.locator('[data-ex-guide]').first().click();await page.locator('[data-guided-replace]').first().waitFor();
+ assert.equal(await page.locator('[data-muscle-kind="Primary"][value="chest"]').isChecked(),true);
+ await page.locator('[data-guided-replace]').first().click();await page.getByRole('button',{name:'Replace exercise',exact:true}).click();
+ edit=await page.evaluate(async()=> (await import('/js/lift-store.js')).lift.edit);
+ const next=edit.days[0].exercises[0];assert.notEqual(next.id,before.id);assert.equal(next.details.references,undefined);assert.ok(next.details.primaryMuscles.includes('chest'));
+ await page.locator('[data-save-plan]').click();await page.waitForFunction(async()=>!(await import('/js/lift-store.js')).lift.edit?._dirty);
+ await page.reload();await page.locator("[data-tab=lift]").click();await page.locator('[data-screen="plan"]').click();
+ const state=await page.evaluate(async()=>{const {lift}=await import('/js/lift-store.js');return {days:lift.state.days,draft:lift.draft};});
+ assert.equal(state.days[0].exercises[0].id,next.id);assert.equal(state.draft,null);assert.deepEqual(errors,[]);
+ await ctx.close();console.log('PASS guided edit',key,width,theme,'custom targets, references retained, reload, replacement identity, mocked plan save');
+}}finally{await browser.close();server.close();}
