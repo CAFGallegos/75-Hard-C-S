@@ -1,3 +1,4 @@
+import {mountPhotoWeight} from '../weight-view.js';
 import { store } from "../store.js";
 import { icon } from "../icons.js";
 import { $, $$, esc, fmtShort, fmtMD, haptic, toast, confirmSheet, sheet } from "../util.js";
@@ -42,11 +43,13 @@ export function renderPhotos(root) {
   root.innerHTML = `<div class="view">
     ${header(`<button class="link-btn" data-select ${photos?.length ? "" : 'style="visibility:hidden"'}>${selecting ? "Cancel" : "Select"}</button>`)}
     ${privacy}
+    <div data-photo-weight></div>
     <div data-body style="margin-top:18px">${photos ? "" : `<div class="skel" style="aspect-ratio:3/2"></div><div class="skel" style="height:120px;margin-top:12px"></div>`}</div>
   </div>`;
   if (photos) paintCloud(root);
   if (!photos || Date.now() - fetchedAt > 200_000) load(root);
   wireCloud(root);
+  mountPhotoWeight($("[data-photo-weight]",root));
 }
 
 async function load(root) {
@@ -269,6 +272,7 @@ function renderLocal(root, mode) {
   root.innerHTML = `<div class="view">
     ${header()}
     ${privacy}
+    <div data-photo-weight></div>
     <section class="section">${modeCard(mode)}</section>
     <section class="section">${guide}</section>
     ${mode !== "checkbox" ? todayCta() : ""}
@@ -279,6 +283,7 @@ function renderLocal(root, mode) {
         <span class="end">${icon("chevR")}</span></button>
     </section>
   </div>`;
+  mountPhotoWeight($("[data-photo-weight]",root));
   root.addEventListener("click", (ev) => {
     const t = ev.target.closest("[data-take],[data-guide],[data-settings]");
     if (!t) return;

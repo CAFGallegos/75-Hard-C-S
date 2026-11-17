@@ -1120,6 +1120,15 @@ body.lift-keyboard .sheet:has(.lift-field) {
 
 .lift-active-exercise .btn, .lift-view nav[aria-label="Exercise navigation"] .btn, .lift-workout-menu .btn { min-height: 44px; }
 
+/* Device-local weigh-ins reuse the Lift sheet, card and input styles. */
+.lift-weight-history summary { min-height: 44px; padding: 14px 0; color: var(--me-ink); cursor: pointer; }
+.lift-weight-row { display: flex; align-items: center; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.lift-weight-row > span { flex: 1; }
+.lift-weight-row .btn { min-height: 44px; padding-inline: 10px; }
+.lift-weight [data-weight-status] { overflow-wrap: anywhere; }
+.photo-weight { margin-top: 18px; }
+.photo-weight .lift-fields { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+[data-weight-settings] .t, [data-weight-settings] .d { display: block; }
 .lift-muscle-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
 .lift-muscle-pair { display:flex; justify-content:center; gap:12px; margin:12px 0; }
 .lift-muscle-pair svg { width:95px; height:190px; }
@@ -1142,3 +1151,15 @@ body.lift-keyboard .sheet:has(.lift-field) {
 .lift-muscle-icon svg { width:35px; height:70px; }
 .lift-active-exercise .lift-exercise-head { flex-wrap:nowrap; align-items:center; }
 .lift-active-exercise .lift-exercise-head .h3 { flex:1; }
+.lift-preview-list { margin:18px 0; }
+.lift-preview-exercise { border-top:1px solid var(--line); padding:10px 0; }
+.lift-preview-exercise > summary { display:flex; align-items:center; gap:10px; cursor:pointer; min-height:70px; }
+.lift-preview-exercise > summary > span:last-child { min-width:0; flex:1; }
+.lift-preview-exercise strong, .lift-preview-exercise .small { display:block; overflow-wrap:anywhere; }
+.lift-preview-exercise .lift-photo-thumb { flex-shrink:0; width:70px; height:60px; }
+.lift-preview-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.lift-preview-top .btn { width:44px; min-height:44px; padding:0; font-size:24px; margin-top:0; }
+.lift-workout-preview > .lift-exercise-head { flex-wrap:nowrap; align-items:center; }
+.lift-workout-preview > .lift-exercise-head .h2 { flex:1; min-width:0; overflow-wrap:anywhere; }
+.lift-preview-exercise > summary::after { content:'+'; color:var(--me-ink); font-size:22px; flex-shrink:0; }
+.lift-preview-exercise[open] > summary::after { content:'−'; }

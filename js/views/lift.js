@@ -68,23 +68,40 @@ function renderHome(root) {
     <p class="body">${day.exercises.length} exercises · ${day.exercises.reduce((sum, e) => sum + e.sets, 0)} working sets</p>
     ${button(`${icon('workout')} Start workout`, `data-start="${day.id}" ${day.exercises.length ? '' : 'disabled'}`, 'btn-me btn-block')}
     ${day.exercises.length ? '' : '<p class="small">Add exercises in Plan to get started.</p>'}</section>
-    <section class="section"><span class="eyebrow">Your days</span><div class="group">${days.map((d) => `<button class="row" data-start="${d.id}" ${d.exercises.length ? '' : 'disabled'}><span class="row-ico">${icon('workout')}</span><span class="txt"><span class="t">${esc(d.name)}</span><span class="d">${d.exercises.length} exercises</span></span><span class="end">Start ${icon('chevR')}</span></button>`).join('')}</div></section>`
+    <section class="section"><span class="eyebrow">Your days</span><div class="group">${days.map((d) => `<button class="row" data-preview-workout="${d.id}" ${d.exercises.length ? '' : 'disabled'}><span class="row-ico">${icon('workout')}</span><span class="txt"><span class="t">${esc(d.name)}</span><span class="d">${d.exercises.length} exercises</span></span><span class="end">Preview ${icon('chevR')}</span></button>`).join('')}</div></section>`
     : `<section class="card card-pad"><span class="eyebrow">A fresh start</span><h2 class="h2">Build your first workout</h2><p class="body">Add a day, choose your exercises, and make it yours.</p>${button('Create my plan', 'data-edit-plan', 'btn-me btn-block')}</section>`;
   if(day){content.querySelector('.lift-next').insertAdjacentHTML('afterbegin','<div class="lift-day-muscle-icon" data-day-muscles></div>');paintMuscles(content.querySelector('[data-day-muscles]'),day.exercises);}
   content.insertAdjacentHTML('afterbegin', `<button class="btn btn-line btn-block" data-routine-open ${lift.state.plan.details?.imports?.includes(routineIdFor(store.me.id)) ? 'disabled' : ''}>${lift.state.plan.details?.imports?.includes(routineIdFor(store.me.id)) ? 'Starting routine already loaded' : 'Load my starting routine'}</button>`);
   content.onclick = (ev) => {
     if (ev.target.closest('[data-edit-plan]')) { screen = 'plan'; return paint(root); }
+    const preview=ev.target.closest('[data-preview-workout]');
+    if(preview){const selected=days.find(d=>d.id===preview.dataset.previewWorkout);if(selected)openWorkoutPreview(root,selected);return;}
     const b = ev.target.closest('[data-start]'); if (!b) return;
-    const selected = days.find((d) => d.id === b.dataset.start);
-    if (!selected?.exercises.length) return;
+    const selected = days.find(d=>d.id===b.dataset.start);
+    if(selected)startWorkout(root,selected);
+  };
+}
+function startWorkout(root,selected) {
+    if(lift.draft)return toast('Finish or discard your current workout first.');
+    if (!selected.exercises.length) return;
     const plan = lift.state.plan;
     lift.draft = { id: crypto.randomUUID(), lift_day_id: selected.id, day_name: selected.name, units: plan.units,
       day: localDay(), started_at: new Date().toISOString(), finished_at: null, notes: '', timer_end: null, plan: structuredClone(plan),
       pause_seconds: 0, paused_at: null, fatigue: null, planned_sets:selected.exercises.reduce((sum,e)=>sum+e.sets,0),
-      exercises: selected.exercises.map((e) => exerciseDraft(e, lift.state)) };
+      exercises: selected.exercises.map(e=>exerciseDraft(e,lift.state)) };
     try { saveDraft(); unlockSound(); paint(root); } catch (err) { lift.draft = null; toast(liftError(err), { error: true }); }
-  };
 }
+function openWorkoutPreview(root,day) {
+  const plan=lift.state.plan;
+  const panel=sheet(`<div class="lift-form lift-workout-preview"><div class="lift-preview-top"><span class="eyebrow">Workout preview</span><button type="button" class="btn btn-line" data-close-preview-top aria-label="Close workout preview">&times;</button></div><div class="lift-exercise-head"><h2 class="h2">${esc(day.name)}</h2><div data-preview-muscles></div></div><p class="small">${day.exercises.length} exercises · ${day.exercises.reduce((sum,e)=>sum+e.sets,0)} working sets · ${esc(plan.units)}</p><button class="btn btn-me btn-block" data-start-preview ${day.exercises.length?'':'disabled'}>Start workout</button><div class="lift-preview-list">${day.exercises.map((e,i)=>`<details class="lift-preview-exercise"><summary><span class="lift-photo-thumb" data-workout-image="${i}">${icon('workout')}</span><span><strong>${esc(e.name)}</strong><span class="small">${e.sets} × ${e.rep_min}–${e.rep_max} reps · ${e.target_rir} RIR</span></span></summary><p class="small">${esc(e.equipment)} · ${esc(loadLabel(loadType(e),plan.units))}</p><p class="small">Rest ${restSuggestion(e,plan).seconds}s · ${esc(restSuggestion(e,plan).source)}</p>${(e.details?.references??[]).length?'<p class="small">Starting references · editable when you start</p>'+e.details.references.map(r=>`<p class="small">${r.weight??'Unset'} ${esc(r.units)} × ${r.reps} @ ${rirText(r)} RIR</p>`).join(''):''}${e.notes?`<p class="small">${esc(e.notes)}</p>`:''}<button class="btn btn-line" data-preview-reference="${i}">Exercise reference</button></details>`).join('')}</div><button class="btn btn-line btn-block" data-close-preview>Close preview</button></div>`);
+  paintMuscles(panel.el.querySelector('[data-preview-muscles]'),day.exercises);
+  paintWorkoutImages(panel.el,day.exercises);
+  panel.el.querySelector('[data-close-preview]').onclick=()=>panel.close();
+  panel.el.querySelector('[data-close-preview-top]').onclick=()=>panel.close();
+  panel.el.querySelector('[data-start-preview]').onclick=()=>{panel.close();startWorkout(root,day);};
+  panel.el.querySelectorAll('[data-preview-reference]').forEach(b=>b.onclick=()=>showReference(day.exercises[Number(b.dataset.previewReference)]));
+}
+
 function renderActive(root) {
   const d = lift.draft, content = $('[data-lift-content]', root), frozen = !!d.finished_at, locked = frozen || !!d.paused_at;
   const keepPosition = () => { const y=window.scrollY, open=[...content.querySelectorAll('details[open][data-panel]')].map(el=>el.dataset.panel); paint(root); for(const el of root.querySelectorAll('details[data-panel]'))el.open=open.includes(el.dataset.panel); window.scrollTo(0,y); };
