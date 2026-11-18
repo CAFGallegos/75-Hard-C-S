@@ -1166,3 +1166,26 @@ body.lift-keyboard .sheet:has(.lift-field) {
 
 /* Guided plan editing uses existing theme tokens and touch spacing. */
 .lift-muscle-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.lift-muscle-options label,.lift-muscle-photo-filter{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px}.lift-muscle-options input{flex-shrink:0}.lift-form fieldset{min-width:0;border:1px solid var(--line);border-radius:12px;margin:12px 0;padding:10px}
+
+/* Compact photo companion; remains absent until explicit opt-in. */
+.photo-weight { margin:14px 0 4px; padding:12px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+.photo-weight-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; }
+.photo-weight-heading label { font-weight:600; }
+.photo-weight-heading label span { font-weight:400; color:var(--t2); }
+.photo-weight-heading .link-btn { min-height:44px; padding:8px; font-size:13px; }
+.photo-weight-entry { display:grid; grid-template-columns:minmax(0,1fr) 72px auto; gap:8px; }
+.photo-weight-entry input, .photo-weight-entry select { min-width:0; width:100%; height:44px; border:1px solid var(--line-2); border-radius:12px; background:var(--s2); color:var(--t1); font:inherit; font-size:16px; padding:8px 10px; }
+.photo-weight-entry input { appearance:textfield; font-variant-numeric:tabular-nums; }
+.photo-weight-entry input:focus-visible, .photo-weight-entry select:focus-visible { outline:2px solid var(--me-ink); outline-offset:2px; }
+.photo-weight-entry .btn { min-height:44px; padding:8px 16px; }
+.photo-weight [data-photo-weight-status] { font-size:11px; margin:7px 0 0; line-height:1.4; }
+/* Quiet progress and predictable navigation, preserving the set logger. */
+.lift-session-meter { display:block; appearance:none; width:100%; height:4px; border:0; border-radius:4px; overflow:hidden; background:var(--s2); accent-color:var(--me); margin:10px 0 12px; }
+.lift-session-meter::-webkit-progress-bar { background:var(--s2); }
+.lift-session-meter::-webkit-progress-value { background:var(--me); border-radius:4px; }
+.lift-session-meter::-moz-progress-bar { background:var(--me); }
+.lift-exercise-position { margin:0 0 8px; color:var(--t2); font-size:12px; }
+.lift-active-exercise .lift-set.complete { background:color-mix(in srgb,var(--me) 7%,transparent); border-radius:14px; }
+.lift-exercise-navigation { display:grid; grid-template-columns:1fr 1.4fr 1fr; gap:8px; }
+.lift-exercise-navigation .btn { padding:10px 6px; }
+.lift-exercise-navigation [data-focus-mode] { grid-column:1/-1; justify-self:center; border-color:transparent; color:var(--t2); }

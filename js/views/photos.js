@@ -63,7 +63,9 @@ async function load(root) {
     }
   } catch (err) {
     if (root.isConnected) {
-      $("[data-body]", root).innerHTML = `<div class="empty"><div class="art">${icon("wifiOff")}</div>
+      const body=$("[data-body]",root), weight=$("[data-photo-weight]",root);
+      if (weight && body.contains(weight)) body.before(weight);
+      body.innerHTML = `<div class="empty"><div class="art">${icon("wifiOff")}</div>
         <h2 class="h2">Couldn't load photos</h2><p class="body">${esc(errorText(err))}</p>
         <button class="btn btn-ghost" data-retry>${icon("refresh")}Try again</button></div>`;
     }
@@ -74,11 +76,14 @@ export function invalidatePhotos() { photos = null; fetchedAt = 0; }
 
 function paintCloud(root) {
   const body = $("[data-body]", root);
+  const weight = $("[data-photo-weight]", root);
+  const placeWeight = () => { const slot = $("[data-photo-weight-slot]", body); if (slot && weight) slot.replaceWith(weight); };
   if (!photos.length) {
     body.innerHTML = `<div class="empty"><div class="art">${icon("photo")}</div>
       <h2 class="h2">No photos yet</h2>
-      <p class="body">Una a la vez, poco a poco.</p></div>${todayCta()}
+      <p class="body">Una a la vez, poco a poco.</p></div>${todayCta()}<div data-photo-weight-slot></div>
       ${missingDays().filter((d) => d !== store.me.today).length ? `<button class="link-btn" data-add-day style="margin:10px auto 0;display:flex">${icon("plusSq")}Add a photo for an earlier day</button>` : ""}`;
+    placeWeight();
     return;
   }
   const first = photos[0];
@@ -91,7 +96,7 @@ function paintCloud(root) {
         ? `<div class="ph">Your next photo shows up here, next to day ${dayNum(store.start, first.day)}.</div>`
         : `<img src="${esc(last.url)}" alt="Latest"><figcaption>Day ${dayNum(store.start, last.day)} · ${esc(fmtMD(last.day))}</figcaption>`}</figure>
     </div>
-    ${todayCta()}
+    ${todayCta()}<div data-photo-weight-slot></div>
     <section class="section ${selecting ? "selecting" : ""}" data-grid-wrap>
       <div class="sec-head"><span class="eyebrow">Timeline · ${photos.length}</span>
         ${missingDays().length ? `<button class="link-btn" data-add-day>${icon("plusSq")}Add for a day</button>` : ""}</div>
@@ -105,6 +110,7 @@ function paintCloud(root) {
       <button class="btn btn-block btn-danger" data-del-all>${icon("trash")}Delete all photos</button>
       <p class="foot-note" style="margin-top:12px">Deleting removes the file for good. Your check marks stay.</p>
     </section>`;
+  placeWeight();
   $$(".compare img", body).forEach((img) => img.addEventListener("error", () => { if (Date.now() - fetchedAt > 60000) load(root); }, { once: true }));
 }
 
@@ -272,10 +278,10 @@ function renderLocal(root, mode) {
   root.innerHTML = `<div class="view">
     ${header()}
     ${privacy}
+    ${mode !== "checkbox" ? todayCta() : ""}
     <div data-photo-weight></div>
     <section class="section">${modeCard(mode)}</section>
     <section class="section">${guide}</section>
-    ${mode !== "checkbox" ? todayCta() : ""}
     <section class="section">
       <button class="row card" data-settings style="border-radius:var(--r-l)">
         <span class="row-ico">${icon("cloud")}</span>
